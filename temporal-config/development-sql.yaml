@@ -1,0 +1,65 @@
+# Temporal Dynamic Configuration for Development
+# This file contains runtime configuration settings for Temporal Server
+
+# System settings
+system.forceSearchAttributesCacheRefreshOnRead:
+  - value: true
+    constraints: {}
+
+# Frontend service settings
+frontend.enableUpdateWorkflowExecution:
+  - value: true
+    constraints: {}
+
+frontend.enableUpdateWorkflowExecutionAsyncAccepted:
+  - value: true
+    constraints: {}
+
+# History service settings
+history.enableReplicationTaskGeneration:
+  - value: true
+    constraints: {}
+
+# Worker service settings
+worker.enableReplication:
+  - value: false
+    constraints: {}
+
+# Matching service settings
+matching.enableTaskInfoLogByDomainID:
+  - value: false
+    constraints: {}
+
+# Visibility settings
+system.enableReadVisibilityFromES:
+  - value: false
+    constraints: {}
+
+# Advanced visibility (Elasticsearch) - disabled for basic setup
+system.enableReadFromSecondaryVisibility:
+  - value: false
+    constraints: {}
+
+# Archival settings - disabled for basic setup
+system.enableArchivalRead:
+  - value: false
+    constraints: {}
+
+system.enableArchivalWrite:
+  - value: false
+    constraints: {}
+
+# Namespace settings
+system.enableNamespaceNotActiveAutoForwarding:
+  - value: true
+    constraints: {}
+
+# Development mode settings
+system.enableDebugMode:
+  - value: true
+    constraints: {}
+
+# Metrics and logging
+system.enableLogCustomerQueryParameter:
+  - value: true
+    constraints: {}
