@@ -2,7 +2,7 @@ import os
 import asyncio
 from temporalio.client import Client
 from launchpad.worker import LaunchpadWorker
-from launchpad.activities.mock import MockActivities
+from launchpad.flows.mock import MockFlow
 
 
 async def main():
@@ -10,7 +10,7 @@ async def main():
     client = await Client.connect(TEMPORAL_HOST)
     
     # Create worker - this needs to be done in async context
-    worker = LaunchpadWorker(client, MockActivities.queue_name, MockActivities)
+    worker = LaunchpadWorker(client, MockFlow.queue_name, MockFlow)
     
     # Run the worker
     await worker.run()

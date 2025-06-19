@@ -1,48 +1,83 @@
 from dataclasses import dataclass
+from typing import Dict, Any, Type
 
 
 @dataclass
-class IQuery:
+class Query:
     """
-    Interface for query operations.
+    Abstract base class for all ETL query operations.
+    
+    Query objects encapsulate the parameters and logic needed to extract data 
+    from specific sources like Launchpad APIs, databases, or other systems.
     """
+    
     @staticmethod
-    def from_dict(data: dict):
+    def from_dict(data: Dict[str, Any]) -> "Query":
         """
-        Create an instance from a dictionary.
-        :param data: Dictionary containing query parameters.
-        :return: An instance of the query.
+        Create a query instance from a dictionary of parameters.
+        
+        Args:
+            data: Dictionary containing query-specific parameters and configuration
+            
+        Returns:
+            Fully configured query instance ready for execution
+            
+        Raises:
+            NotImplementedError: If not implemented by concrete class
+            ValueError: If required parameters are missing or invalid
         """
-        raise NotImplementedError("Subclasses must implement this method.")
+        raise NotImplementedError("Subclasses must implement from_dict() method.")
 
-    def to_summary_base(self) -> dict:
+    def to_summary_base(self) -> Dict[str, Any]:
         """
-        Convert the query to a dictionary format.
-        :return: Dictionary representation of the query.
+        Convert the query to a summary dictionary for reporting and logging.
+        
+        Returns:
+            Dictionary containing summarized query information suitable for logging
+            
+        Raises:
+            NotImplementedError: If not implemented by concrete class
         """
-        raise NotImplementedError("Subclasses must implement this method.")
+        raise NotImplementedError("Subclasses must implement to_summary_base() method.")
 
 
 class QueryFactory:
     """
-    Factory class to create query instances based on type.
+    Factory class for creating query instances dynamically based on type identifiers.
+    
+    Class Attributes:
+        queryTypes (Dict[str, str]): Registry mapping query type names to
+                                   their module.class paths
     """
 
-    # Add other query types here as needed
-    queryTypes = {
-        # "IQuery": "models.query.IQuery",
+    # Registry of available query types mapped to their module paths
+    # Format: "QueryTypeName": "module.path.ClassName"
+    queryTypes: Dict[str, str] = {
         "LaunchpadQuery": "launchpad.query.LaunchpadQuery",
+        # Add additional query types here as they are implemented
+        # "DatabaseQuery": "database.query.DatabaseQuery",
+        # "APIQuery": "api.query.APIQuery",
     }
 
     @staticmethod
-    def create(query_type: str, args: dict) -> IQuery:
+    def create(query_type: str, args: Dict[str, Any]) -> Query:
         """
-        Create a query instance based on the type.
-        :param query_type: The type of query to create.
-        :param kwargs: Additional parameters for the query.
-        :return: An instance of the specified query type.
+        Create a query instance of the specified type with the given arguments.
+
+        Args:
+            query_type: String identifier for the query type (must be registered
+                       in queryTypes dictionary)
+            args: Dictionary of arguments to pass to the query's from_dict() method
+            
+        Returns:
+            Configured query instance ready for use in ETL workflows
+            
+        Raises:
+            ValueError: If query_type is not registered in queryTypes
+            TypeError: If the loaded class is not a Query subclass
+            ImportError: If the specified module cannot be imported
+            AttributeError: If the specified class cannot be found in the module
         """
-        print(query_type)
         if query_type not in QueryFactory.queryTypes:
             raise ValueError(f"Unknown query type: %s", query_type)
 
@@ -50,7 +85,7 @@ class QueryFactory:
         module = __import__(module_name, fromlist=[class_name])
         query_class = getattr(module, class_name)
 
-        if not issubclass(query_class, IQuery):
+        if not issubclass(query_class, Query):
             raise TypeError(f"{query_class.__name__} is not a subclass of IQuery")
 
         return query_class.from_dict(args)

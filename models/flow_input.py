@@ -1,0 +1,25 @@
+from typing import Type, Dict, Any
+from dataclasses import dataclass
+
+
+@dataclass
+class FlowInput:
+    """
+    Standardized input container for workflow parameters.
+    
+    The FlowInput structure separates the concern of identifying the operation type
+    from the specific parameters, allowing workflows to be more generic and reusable
+    across different data sources and query types.
+    
+    Attributes:
+        type (str): String identifier for the query/operation type, used by
+                   QueryFactory to create appropriate query instances
+        args (Dict[str, Any]): Dictionary containing all parameters specific
+                              to the query type
+    """
+    type: str
+    args: Dict[str, Any]
+
+    def __init__(self, type: Type, args: Dict[str, Any]) -> None:
+        self.type = type.__name__
+        self.args = args

@@ -6,16 +6,19 @@ from dataclasses import dataclass
 @dataclass
 class Event:
     """
-    Represents a Launchpad event to be stored in the database.
+    Represents a standardized event in the Worklytics format for database storage.
     
     Attributes:
-        id: Unique event identifier
-        week: Date of the first day of the week the event occurred (YYYY-MM-DD format)
-        employee_id: Identifier for the employee
-        source_kind_id: Source identifier (defaults to "launchpad")
-        event_type: Type of event (e.g., "bug:created", "bug:commented", "merge_proposal:approved")
-        event_time_utc: UTC timestamp of when the event occurred
-        relation_properties: Dictionary containing additional event-specific information
+        id (str): Unique event identifier, typically combining entity type and ID
+        parent_id (str): Identifier of the parent entity (bug ID, merge proposal ID, etc.)
+        week (str): ISO date of the Monday of the week when the event occurred (YYYY-MM-DD)
+        employee_id (str): Unique identifier for the employee/developer
+        type (str): Event type following the format "entity:action" 
+                   (e.g., "bug:created", "merge_proposal:approved", "question:answered")
+        time_utc (str): ISO timestamp of when the event occurred (YYYY-MM-DDTHH:MM:SSZ)
+        source_kind_id (str): Source system identifier, defaults to "launchpad"
+        relation_properties (Optional[Dict[str, Any]]): Additional event-specific metadata
+                                                       stored as key-value pairs
     """
     
     id: str
@@ -27,8 +30,13 @@ class Event:
     source_kind_id: str = "launchpad"
     relation_properties: Optional[Dict[str, Any]] = None
 
-    def __post_init__(self):
-        """Validate and normalize event data after initialization."""
+    def __post_init__(self) -> None:
+        """
+        Validate and normalize event data after initialization.
+        
+        Raises:
+            ValueError: If any required field is empty or invalid
+        """
         if not self.id:
             raise ValueError("Event ID cannot be empty")
         
@@ -51,52 +59,13 @@ class Event:
         if self.relation_properties is None:
             self.relation_properties = {}
     
-    @classmethod
-    def create_from_data(
-        cls,
-        event_id: str,
-        parent_id: str,
-        week: str,
-        employee_id: str,
-        event_type: str,
-        event_time_utc: str,
-        relation_properties: Optional[Dict[str, Any]] = None,
-        source_kind_id: str = "launchpad"
-    ) -> "Event":
-        """
-        Create an Event instance from individual data fields.
-        
-        Args:
-            event_id: Unique event identifier
-            parent_id: Unique identifier for the parent entity (e.g. bug, merge proposal, etc.)
-            week: Week start date (YYYY-MM-DD)
-            employee_id: Employee identifier
-            event_type: Event type string
-            event_time_utc: UTC timestamp string
-            relation_properties: Additional event data
-            source_kind_id: Source identifier
-            
-        Returns:
-            Event instance
-        """
-        return cls(
-            id=event_id,
-            parent_id=parent_id,
-            week=week,
-            employee_id=employee_id,
-            type=event_type,
-            time_utc=event_time_utc,
-            source_kind_id=source_kind_id,
-            relation_properties=relation_properties or {}
-        )
-    
     def add_relation_property(self, key: str, value: Any) -> None:
         """
-        Add a property to the relation_properties dictionary.
+        Add a single property to the relation_properties dictionary.
         
         Args:
-            key: Property key
-            value: Property value
+            key: Property key/name for the metadata field
+            value: Property value, can be any JSON-serializable type
         """
         if self.relation_properties is None:
             self.relation_properties = {}
@@ -107,18 +76,18 @@ class Event:
         Add multiple properties to the relation_properties dictionary.
         
         Args:
-            properties: Dictionary of properties to add
+            properties: Dictionary of key-value pairs to add to event metadata
         """
         if self.relation_properties is None:
             self.relation_properties = {}
         self.relation_properties.update(properties)
 
-    def relation_properties_as_json(self) -> str | None:
+    def relation_properties_as_json(self) -> Optional[str]:
         """
-        Get relation properties as a JSON string.
-        
+        Serialize relation properties to a JSON string for database storage.
+                
         Returns:
-            str: JSON string representation of relation properties
+            JSON string representation of relation properties, or None if empty
         """
         import json
         return json.dumps(self.relation_properties, ensure_ascii=False) if self.relation_properties else None
@@ -126,13 +95,13 @@ class Event:
 
 def get_week_start_date(date_obj: datetime) -> str:
     """
-    Get the start date (Monday) of the week for a given date.
+    Calculate the Monday date for the week containing the given date.
     
     Args:
-        date_obj: datetime object
+        date_obj: datetime object for which to find the week start
         
     Returns:
-        str: Date in YYYY-MM-DD format representing the start of the week
+        ISO date string (YYYY-MM-DD) representing the Monday of the week
     """
     days_since_monday = date_obj.weekday()
     week_start = date_obj - timedelta(days=days_since_monday)

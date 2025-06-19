@@ -4,10 +4,10 @@ import os
 
 from temporalio.client import Client
 
-from models.etl_workflow import ETLWorkflow
-from models.etl_input import ETLInput
+from models.flow_input import FlowInput
 
 from launchpad.query import LaunchpadQuery
+from launchpad.flows.mock import MockFlow
 
 async def main():
     # Connect to Temporal server
@@ -55,13 +55,13 @@ async def main():
     for i, config in enumerate(workflow_configs):
         workflow_id = f"launchpad-workflow-{i+1}-{uuid.uuid4()}"
         
-        input = ETLInput(
-            query_type=LaunchpadQuery,
+        input = FlowInput(
+            type=LaunchpadQuery,
             args=config
         )
         
         handle = await client.start_workflow(
-            workflow=ETLWorkflow.run,
+            workflow=MockFlow.run,
             args=(input,),
             id=workflow_id,
             task_queue="launchpad-mock-task-queue",
