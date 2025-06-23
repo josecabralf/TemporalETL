@@ -63,17 +63,9 @@ class Database:
         self.connection.execute("PRAGMA foreign_keys = ON")
         
         # Create events table
+        # TODO: define schema
         self.connection.execute("""
-            CREATE TABLE IF NOT EXISTS events (
-                id TEXT PRIMARY KEY,
-                parent_id TEXT,
-                week DATE NOT NULL,
-                employee_id TEXT NOT NULL,
-                source_kind_id TEXT NOT NULL,
-                event_type TEXT NOT NULL,
-                event_time_utc TIMESTAMP NOT NULL,
-                relation_properties TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS launchpad_events (
             )
         """)
         
@@ -100,38 +92,8 @@ class Database:
             Exception: Database-level errors are caught and logged, but the method
                       returns 0 for complete failures rather than raising exceptions
         """
-        with self._db_lock:
-            successful_inserts = 0
-            try:
-                cursor = self.connection.cursor()
-                for event in events:
-                    try:
-                        cursor.execute("""
-                            INSERT OR REPLACE INTO events 
-                            (id, week, employee_id, source_kind_id, event_type, event_time_utc, relation_properties)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            event.id,
-                            event.week,
-                            event.employee_id,
-                            event.source_kind_id,
-                            event.type,
-                            event.time_utc,
-                            json.dumps(event.relation_properties) if event.relation_properties else None
-                        ))
-                        successful_inserts += 1
-                    except Exception as e:
-                        print(f"Error inserting event {event.type}-{event.id}: {e}")
-                        continue
-                
-                self.connection.commit()
-                
-            except Exception as e:
-                print(f"Error in batch insert: {e}")
-                self.connection.rollback()
-                successful_inserts = 0
-            
-            return successful_inserts
+        # TODO: Implement actual database loading logic
+        return 0
     
     def close(self) -> None:
         """

@@ -1,11 +1,10 @@
 import logging
 from datetime import timedelta
-from typing import Dict, Any
+from typing import Dict, List, Any
 
 from temporalio import workflow
 
 from models.query import QueryFactory
-from models.flow import Flow
 
 
 # Configure logging
@@ -14,10 +13,34 @@ logger = logging.getLogger(__name__)
 
 
 @workflow.defn
-class ETLFlow(Flow):
+class ETLFlow:
     """
     Temporal workflow for processing Launchpad data through an ETL pipeline.
     """
+    queue_name: str
+
+    @staticmethod
+    def get_activities() -> List[Any]:
+        """
+        Return a list of activity functions to register with the Temporal worker.
+        
+        The activities should be defined in the same file as the workflow class
+        or imported from related modules.
+        
+        Returns:
+            List of activity function references that will be registered
+            with the Temporal worker.
+            
+        Raises:
+            NotImplementedError: If not implemented by concrete class.
+            
+        Example:
+            @staticmethod
+            def get_activities() -> List[Any]:
+                return [extract_data, transform_data, load_data]
+        """
+        raise NotImplementedError("Subclasses must implement get_activities() method.")
+
     
     @workflow.run
     async def run(self, input: Dict[str, Any]) -> Dict[str, Any]:

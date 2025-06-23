@@ -21,14 +21,24 @@ class Event:
                                                        stored as key-value pairs
     """
     
-    id: str
-    parent_id: str
-    week: str
-    employee_id: str
-    type: str
-    time_utc: str
-    source_kind_id: str = "launchpad"
-    relation_properties: Optional[Dict[str, Any]] = None
+    id: Optional[int]                                       # serial4
+    source_kind_id: str                                     # varchar
+    parent_item_id: str                                     # varchar
+    event_id: str                                           # varchar, unique identifier
+
+    event_type: str                                         # varchar
+    relation_type: str                                      # varchar
+
+    employee_id: str                                        # varchar
+
+    event_time_utc: str                                     # timestamp
+    week: Optional[str]                                     # date
+    timezone: Optional[str]                                 # varchar
+    event_time: Optional[str]                               # timestamp in timezone
+    
+    event_properties: Optional[Dict[str, Any]] = None       # jsonb, properties of the event
+    relation_properties: Optional[Dict[str, Any]] = None    # jsonb, properties associated with the action
+    metrics: Optional[Dict[str, Any]] = None                # jsonb, metrics for the event
 
     def __post_init__(self) -> None:
         """
@@ -37,50 +47,33 @@ class Event:
         Raises:
             ValueError: If any required field is empty or invalid
         """
-        if not self.id:
-            raise ValueError("Event ID cannot be empty")
+        # ID is assigned by the database, so we don't validate it here
+        # if not self.id:           raise ValueError("Event ID cannot be empty")
+        if not self.source_kind_id: raise ValueError("Source kind ID cannot be empty")
+        if not self.parent_item_id: raise ValueError("Parent ID cannot be empty")
+        if not self.event_id:       raise ValueError("Event ID cannot be empty")
+
+        if not self.event_type:     raise ValueError("Event type cannot be empty")
+        if not self.relation_type:  raise ValueError("Relation type cannot be empty")
+
+        if not self.employee_id:    raise ValueError("Employee ID cannot be empty")
         
-        if not self.parent_id:
-            raise ValueError("Parent ID cannot be empty")
-        
-        if not self.employee_id:
-            raise ValueError("Employee ID cannot be empty")
-        
-        if not self.type:
-            raise ValueError("Event type cannot be empty")
-        
-        if not self.time_utc:
-            raise ValueError("Event time cannot be empty")
-        
+        if not self.event_time_utc: raise ValueError("Event time cannot be empty")
         if not self.week:
-            self.week = get_week_start_date(datetime.strptime(self.time_utc, '%Y-%m-%dT%H:%M:%SZ'))
+            self.week = get_week_start_date(datetime.fromisoformat(self.event_time_utc))
+        if not self.timezone:
+            self.timezone = 'UTC'
+        if not self.event_time:
+            self.event_time = change_timezone(
+                self.event_time_utc, 
+                from_tz='UTC', 
+                to_tz=self.timezone
+            )  
         
-        # Initialize relation_properties as empty dict if None
-        if self.relation_properties is None:
-            self.relation_properties = {}
-    
-    def add_relation_property(self, key: str, value: Any) -> None:
-        """
-        Add a single property to the relation_properties dictionary.
-        
-        Args:
-            key: Property key/name for the metadata field
-            value: Property value, can be any JSON-serializable type
-        """
-        if self.relation_properties is None:
-            self.relation_properties = {}
-        self.relation_properties[key] = value
-    
-    def add_relation_properties(self, properties: Dict[str, Any]) -> None:
-        """
-        Add multiple properties to the relation_properties dictionary.
-        
-        Args:
-            properties: Dictionary of key-value pairs to add to event metadata
-        """
-        if self.relation_properties is None:
-            self.relation_properties = {}
-        self.relation_properties.update(properties)
+        # Initialize empty dicts if None
+        if self.relation_properties is None: self.relation_properties = {}
+        if self.event_properties is None:    self.event_properties = {}
+        if self.metrics is None:             self.metrics = {}
 
     def relation_properties_as_json(self) -> Optional[str]:
         """
@@ -91,6 +84,26 @@ class Event:
         """
         import json
         return json.dumps(self.relation_properties, ensure_ascii=False) if self.relation_properties else None
+
+    def event_properties_as_json(self) -> Optional[str]:
+        """
+        Serialize event properties to a JSON string for database storage.
+                
+        Returns:
+            JSON string representation of event properties, or None if empty
+        """
+        import json
+        return json.dumps(self.event_properties, ensure_ascii=False) if self.event_properties else None
+
+    def metrics_as_json(self) -> Optional[str]:
+        """
+        Serialize metrics to a JSON string for database storage.
+                
+        Returns:
+            JSON string representation of metrics, or None if empty
+        """
+        import json
+        return json.dumps(self.metrics, ensure_ascii=False) if self.metrics else None
 
 
 def get_week_start_date(date_obj: datetime) -> str:
@@ -106,3 +119,22 @@ def get_week_start_date(date_obj: datetime) -> str:
     days_since_monday = date_obj.weekday()
     week_start = date_obj - timedelta(days=days_since_monday)
     return week_start.strftime('%Y-%m-%d')
+
+def change_timezone(date_str: str, from_tz: str, to_tz: str) -> str:
+    """
+    Convert a date string from one timezone to another.
+    
+    Args:
+        date_str: Date string in ISO format (YYYY-MM-DDTHH:MM:SSZ)
+        from_tz: Source timezone (e.g., 'UTC')
+        to_tz: Target timezone (e.g., 'America/New_York')
+        
+    Returns:
+        Converted date string in the target timezone
+    """
+    from pytz import timezone
+    from datetime import datetime
+    
+    utc_dt = datetime.fromisoformat(date_str).replace(tzinfo=timezone(from_tz))
+    target_dt = utc_dt.astimezone(timezone(to_tz))
+    return target_dt.isoformat()

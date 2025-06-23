@@ -4,7 +4,7 @@ from typing import Type
 from temporalio.worker import Worker
 from temporalio.client import Client
 
-from models.flow import Flow
+from models.etl_flow import ETLFlow
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,7 +16,7 @@ class LaunchpadWorker:
     Manager class for Temporal worker lifecycle in Launchpad ETL operations.
     """
     
-    def __init__(self, client: Client, task_queue: str, lp_workflow_type: Type[Flow]) -> None:
+    def __init__(self, client: Client, task_queue: str, lp_workflow_type: Type[ETLFlow]) -> None:
         """
         Initialize the Launchpad worker manager.
         
@@ -42,7 +42,6 @@ class LaunchpadWorker:
             issues that can occur with global imports in async contexts.
         """
         # Import the workflow class here to avoid event loop issues
-        from models.etl_flow import ETLFlow
 
         logger.info("Creating Temporal worker for task queue: %s", self.task_queue)        
         return Worker(

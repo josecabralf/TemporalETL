@@ -34,13 +34,20 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
 @activity.defn
 async def transform_data(data: List[Dict[str, Any]]) -> List[Event]:
     return [Event(
-        id=str(item["id"]),
-        parent_id="parent-id",
-        week="2023-10-01",
-        employee_id=str(item["employee_id"]),
-        type="mock",
-        time_utc="2023-10-01T00:00:00Z",
-        source_kind_id="launchpad_mock"
+        id=None,
+        source_kind_id="mock_source",
+        parent_item_id=str(item["id"]),
+        event_id=f"mock_event_{item['id']}",
+        event_type="mock_event_type",
+        relation_type="mock_relation_type",
+        employee_id=item["employee_id"],
+        event_time_utc="2023-10-01T12:00:00Z",
+        week=None,  # This can be calculated based on event_time_utc
+        timezone="UTC",
+        event_time="2023-10-01T12:00:00Z",
+        event_properties=None,
+        relation_properties=None,
+        metrics=None
     ) for item in data]
 
 @activity.defn
