@@ -2,6 +2,18 @@
 
 A robust ETL (Extract, Transform, Load) framework built on [Temporal](https://temporal.io/) for processing Launchpad data. This project provides a scalable, fault-tolerant solution for extracting events from Ubuntu's Launchpad platform and transforming them into standardized event records for analytics and reporting.
 
+## 📚 Table of Contents
+
+- [Architecture Overview](#-architecture-overview)
+- [Class Diagram](#-class-diagram)
+- [Features](#-features)
+- [Prerequisites](#-prerequisites)
+- [Installation](#-installation)
+- [Usage](#-usage)
+- [Configuration](#-configuration)
+- [Extending the System](#-extending-the-system)
+- [Additional Resources](#-additional-resources)
+
 ## 🏗️ Architecture Overview
 
 TemporalETL uses Temporal workflows to orchestrate reliable ETL pipelines that can handle failures, retries, and long-running operations gracefully. The system is built around a modular flow architecture where:
@@ -17,16 +29,11 @@ The system extracts data from Launchpad APIs, transforms it into standardized ev
 
 ```mermaid
 classDiagram
-    class Flow {
-        <<interface>>
-        +queue_name: str
-        +get_activities()* List[Any]
-        +run(input: Dict)* Dict[str, Any]
-    }
-    
     class ETLFlow {
         <<abstract>>
+        +queue_name: str
         +run(input: Dict[str, Any]) Dict[str, Any]
+        +get_activities()* List[Any]
     }
     
     class Event {
@@ -85,11 +92,9 @@ classDiagram
         +run() void
     }
     
-    Flow <|.. ETLFlow : implements
     ETLFlow --> QueryFactory : uses
-    
-    Flow ..> Event : creates
-    Flow ..> Database : inserts
+    ETLFlow ..> Event : creates
+    ETLFlow ..> Database : inserts
     
     Query <|.. LaunchpadQuery
     QueryFactory ..> Query : creates
@@ -97,8 +102,7 @@ classDiagram
     
     ETLFlow ..> FlowInput : receives
     
-    LaunchpadWorker --> Flow : registers
-    LaunchpadWorker ..> ETLFlow : executes
+    LaunchpadWorker --> ETLFlow : registers
     
     Database ..> Event : stores
 ```
@@ -114,6 +118,7 @@ classDiagram
 - **Database Integration**: SQLite-based storage with thread-safe operations and batch processing
 - **Query Abstraction**: Flexible query system with `QueryFactory` for dynamic query type creation
 - **Standardized Input**: `FlowInput` container for consistent workflow parameter handling
+
 ## 📋 Prerequisites
 
 - Python 3.8+
@@ -122,122 +127,251 @@ classDiagram
 
 ## 🛠️ Installation
 
-1. Clone the repository:
+### 1. Clone the Repository
 ```bash
-git clone <repository-url>
+git clone https://github.com/your-username/TemporalETL.git
 cd TemporalETL
 ```
 
-2. Install Python dependencies:
+### 2. Set Up Python Environment
 ```bash
+# Create virtual environment (recommended)
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-3. Start the Temporal infrastructure:
+### 3. Start Temporal Infrastructure
 ```bash
+# Start all services (PostgreSQL, Temporal Server, and Web UI)
 docker-compose up -d
+
+# Wait for services to be healthy
+docker-compose ps
 ```
 
-4. Verify Temporal is running:
+### 4. Verify Installation
 ```bash
-# Check containers
+# Check that all containers are running
 docker-compose ps
 
 # Access Temporal Web UI
-open http://localhost:8080
+# Open http://localhost:8080 in your browser
+
+# Test the mock workflow
+python run_mock_worker.py &
+python run_mock_wf.py
 ```
 
 ## 🚀 Usage
 
-### Running a Mock Workflow
+### Quick Start with Mock Data
 
-1. Start the worker:
+The easiest way to get started is with the mock workflow that generates sample data:
+
+1. **Start the mock worker** (in one terminal):
 ```bash
 python run_mock_worker.py
 ```
 
-2. In another terminal, start workflows:
+2. **Execute mock workflows** (in another terminal):
 ```bash
 python run_mock_wf.py
 ```
 
-### Using the Flow System
+### Working with Launchpad Bugs
+
+For processing real Launchpad bug data:
+
+1. **Start the bugs worker**:
+```bash
+python run_bugs_worker.py
+```
+
+2. **Execute bug workflows**:
+```bash
+python run_bugs_wf.py
+```
+
+### Programmatic Usage
 
 ```python
+import asyncio
+from temporalio.client import Client
 from models.flow_input import FlowInput
 from launchpad.query import LaunchpadQuery
-from launchpad.flows.mock import MockFlow
+from launchpad.flows.bugs import BugsFlow
 
-# Create input with query parameters
-input = FlowInput(
-    type=LaunchpadQuery,
-    args={
-        "application_name": "my-app",
-        "service_root": "production", 
-        "version": "devel",
-        "member": "username",
-        "data_date_start": "2023-01-01",
-        "data_date_end": "2023-03-31"
-    }
-)
+async def run_etl_workflow():
+    # Connect to Temporal
+    client = await Client.connect("localhost:7233")
+    
+    # Create input with query parameters
+    flow_input = FlowInput(
+        type="LaunchpadQuery",
+        args={
+            "application_name": "my-launchpad-app",
+            "service_root": "production", 
+            "version": "devel",
+            "member": "ubuntu-username",
+            "data_date_start": "2024-01-01",
+            "data_date_end": "2024-03-31"
+        }
+    )
 
-# Start workflow
-handle = await client.start_workflow(
-    workflow=MockFlow.run,
-    args=(input,),
-    id="my-workflow-id",
-    task_queue=MockFlow.queue_name,
-)
+    # Start workflow
+    handle = await client.start_workflow(
+        BugsFlow.run,
+        flow_input,
+        id=f"bugs-etl-{flow_input.args['member']}-{flow_input.args['data_date_start']}",
+        task_queue=BugsFlow.queue_name,
+    )
+    
+    # Wait for completion and get result
+    result = await handle.result()
+    print(f"Processed {result.get('events_count', 0)} events")
+
+# Run the workflow
+asyncio.run(run_etl_workflow())
 ```
 
 ## 🔧 Configuration
 
 ### Environment Variables
 
-- `LP_APP_ID`: Launchpad application identifier
-- `TEMPORAL_HOST`: Temporal server address (default: `localhost:7233`)
+Create a `.env` file in the root directory or set these environment variables:
 
-### Temporal Configuration
+```bash
+# Temporal Configuration
+TEMPORAL_HOST=localhost:7233
 
-The project includes production-ready Temporal configurations:
-- `temporal-config/config.yaml`: Core server settings
-- `temporal-config/development-sql.yaml`: Development-specific options
+# Launchpad API Configuration (for production)
+LP_APP_ID=your-launchpad-application-id
+
+# Database Configuration (optional, defaults to SQLite)
+DB_PATH=./temporal_etl.db
+```
+
+### Temporal Configuration Files
+
+The project includes production-ready Temporal configurations in the `temporal-config/` directory:
+
+- **`config.yaml`**: Core Temporal server settings
+- **`development-sql.yaml`**: Development-specific options with PostgreSQL backend
+- **`log_config.yaml`**: Logging configuration for different environments
+
+### Docker Services
+
+The `docker-compose.yml` defines three main services:
+
+- **PostgreSQL** (`localhost:5432`): Database backend for Temporal
+- **Temporal Server** (`localhost:7233`): Core workflow engine
+- **Temporal Web UI** (`localhost:8080`): Management and monitoring interface
 
 ## 🔄 Extending the System
 
 ### Adding New Data Sources
-1. Create a new flow class inheriting from `Flow`
-2. Define the `queue_name` class attribute for task routing
-3. Implement the `get_activities()` static method to return activity function references
-4. Create activity functions decorated with `@activity.defn` for extract, transform, and load operations
-5. For ETL workflows, consider inheriting from `ETLFlow` which provides the standard run method
-6. Create corresponding query classes inheriting from `Query` if needed
-7. Register new query types in `QueryFactory.queryTypes` dictionary
 
-### Example Flow Implementation
+1. **Create a new flow class**:
 ```python
-from models.flow import Flow
-from temporalio import activity
+from temporalio import activity, workflow
 
-class CustomFlow(Flow):
+@workflow.defn
+class CustomFlow:
     queue_name = "custom-task-queue"
     
     @staticmethod
     def get_activities():
         return [extract_custom_data, transform_custom_data, load_custom_data]
 
+    @workflow.run
+    def run(...)
+        ...
+```
+
+2. **Define activity functions** for each ETL step:
+```python
 @activity.defn
 async def extract_custom_data(query):
+    """Extract data from your custom data source"""
     # Implementation here
-    pass
+    return raw_data
 
 @activity.defn  
-async def transform_custom_data(data):
-    # Implementation here
-    pass
+async def transform_custom_data(raw_data):
+    """Transform raw data into Event objects"""
+    events = []
+    for item in raw_data:
+        event = Event.create_from_data(
+            # Map your data to Event fields
+        )
+        events.append(event)
+    return events
 
 @activity.defn
 async def load_custom_data(events):
-    # Implementation here
-    pass
+    """Load events into the database"""
+    from db.db import Database
+    db = Database()
+    return db.insert_events_batch(events)
 ```
+
+3. **Create corresponding query classes** if needed:
+```python
+from models.query import Query
+
+class CustomQuery(Query):
+    def __init__(self, endpoint: str, api_key: str, date_range: str):
+        self.endpoint = endpoint
+        self.api_key = api_key
+        self.date_range = date_range
+    
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(**data)
+    
+    def to_summary_base(self) -> dict:
+        return {
+            "endpoint": self.endpoint,
+            "date_range": self.date_range
+        }
+```
+
+4. **Register new query types** in `QueryFactory`:
+```python
+# In models/query.py
+QueryFactory.queryTypes["CustomQuery"] = CustomQuery
+```
+
+5. **Create worker and workflow runners**:
+```python
+# run_custom_worker.py
+import asyncio
+from temporalio.client import Client
+from launchpad.worker import LaunchpadWorker
+from your_module.flows.custom import CustomFlow
+
+async def main():
+    client = await Client.connect("localhost:7233")
+    worker = LaunchpadWorker(client, CustomFlow.queue_name, CustomFlow)
+    await worker.run()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Best Practices for Custom Flows
+
+- **Error Handling**: Use Temporal's retry policies and handle transient failures gracefully
+- **Rate Limiting**: Implement appropriate delays for API calls to avoid rate limits  
+- **Idempotency**: Ensure activities can be safely retried without side effects
+- **Logging**: Use structured logging for better observability
+
+## 📚 Additional Resources
+
+- **[Temporal Documentation](https://docs.temporal.io/)** - Complete guide to Temporal workflows
+- **[Launchpad API Documentation](https://help.launchpad.net/API)** - Launchpad REST API reference
+- **[Python AsyncIO Guide](https://docs.python.org/3/library/asyncio.html)** - Asynchronous programming in Python
+- **[Docker Compose Reference](https://docs.docker.com/compose/)** - Container orchestration documentation
