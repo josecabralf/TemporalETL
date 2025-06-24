@@ -39,7 +39,7 @@ merge_proposal_status = [
 
 @activity.defn
 async def extract_data(query: LaunchpadQuery) -> List[dict]:
-    lp = Launchpad.login_anonymously(query.application_name, query.service_root, query.version)
+    lp = Launchpad.login_anonymously(consumer_name=query.application_name, service_root=query.service_root, version=query.version)
     if not lp:
         raise ValueError("Failed to connect to Launchpad API")
     
@@ -53,23 +53,31 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
     merge_proposals = person.getMergeProposals(status=merge_proposal_status)
     if not merge_proposals: return []
 
-    # transform query.data_date_start into datetime (format: YYYY-MM-DD)
     from_date = datetime.strptime(query.data_date_start, "%Y-%m-%d").replace(tzinfo=pytz.UTC)
     to_date = datetime.strptime(query.data_date_end, "%Y-%m-%d").replace(tzinfo=pytz.UTC)
     time_zone = person.time_zone
 
     events = []
-    for idx, merge_proposal in enumerate(merge_proposals):
+    for merge_proposal in merge_proposals:
         parent_item_id = f"mp-{merge_proposal.self_link.split('/')[-1]}"
-        
-        event_properties = extract_event_props(merge_proposal)
-        metrics = {}
-        relation_properties = {}
 
-        if not dates_in_range(
-            [merge_proposal.date_created, merge_proposal.date_review_requested, merge_proposal.date_reviewed, merge_proposal.date_merged], 
-            from_date, to_date):
-            continue
+        dates = [
+            merge_proposal.date_created, 
+            merge_proposal.date_review_requested,
+            merge_proposal.date_reviewed, 
+            merge_proposal.date_merged
+        ]
+
+        comments_response = requests.get(merge_proposal.all_comments_collection_link)
+        if comments_response.status_code == 200:
+            dates.extend(datetime.strptime(comment['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z") for comment in comments_response.json()['entries'])
+        if not dates_in_range(dates, from_date, to_date): continue # skip if no dates are in range
+
+        event_properties = extract_event_props(merge_proposal)
+        metrics = {
+            'comments_count': comments_response.json()['total_size'] if comments_response.status_code == 200 else 0,
+        }
+        relation_properties = {}
 
         # Create merge_proposal_created event_relation
         if date_in_range(merge_proposal.date_created, from_date, to_date):
@@ -148,9 +156,8 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
             }
             events.append(info)
 
-        comments_response = requests.get(merge_proposal.all_comments_collection_link)
-        if comments_response.status_code != 200:
-            continue # Skip if comments cannot be fetched
+        if len(dates) == 4:
+            continue # No comments were found, skip to next merge proposal
 
         for comment in comments_response.json()['entries']:
             date_created = datetime.strptime(comment['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z")
@@ -182,7 +189,6 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
 
 @activity.defn
 async def transform_data(events: List[dict]) -> List[Event]:
-    print(events[0])
     source_kind_id = "launchpad"
     event_type = "merge_proposal"
     return [Event(

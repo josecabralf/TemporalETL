@@ -1,0 +1,182 @@
+from datetime import datetime
+import pytz
+import requests
+from typing import List, Any
+
+from temporalio import activity
+
+from models.etl_flow import ETLFlow
+from models.event import Event
+from models.date_utils import date_in_range, dates_in_range
+
+from launchpad.query import LaunchpadQuery
+
+from launchpadlib.launchpad import Launchpad
+
+
+class QuestionsFlow(ETLFlow):
+    """
+    ETL workflow implementation for processing Launchpad question and answer data.
+    """
+    queue_name = "launchpad-questions-task-queue"
+    
+    @staticmethod
+    def get_activities() -> List[Any]:
+        return [extract_data, transform_data, load_data]
+    
+
+@activity.defn
+async def extract_data(query: LaunchpadQuery) -> List[dict]:
+    lp = Launchpad.login_anonymously(consumer_name=query.application_name, service_root=query.service_root, version=query.version)
+    if not lp:
+        raise ValueError("Failed to connect to Launchpad API")
+    
+    try:
+        person = lp.people[query.member]
+    except KeyError:
+        return []
+    except Exception as e:
+        raise ValueError(f"Error fetching member %s: %s", query.member, e)
+    
+    questions = person.searchQuestions(participation='Owner')
+    if not questions: return []
+
+    from_date = datetime.strptime(query.data_date_start, "%Y-%m-%d").replace(tzinfo=pytz.UTC)
+    to_date = datetime.strptime(query.data_date_end, "%Y-%m-%d").replace(tzinfo=pytz.UTC)
+    time_zone = person.time_zone
+
+    events = []
+    for question in questions:
+        parent_item_id = f"q-{question.id}"
+
+        dates = [
+            question.date_created, 
+            question.date_last_query, 
+            question.date_last_response, 
+            question.date_solved
+        ]
+
+        answers_response = requests.get(question.messages_collection_link)
+        if answers_response.status_code == 200:
+            dates.extend(datetime.strptime(comment['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z") for comment in answers_response.json()['entries'])
+        if not dates_in_range(dates, from_date, to_date): continue # Skip if no dates are in range
+
+        event_properties = extract_event_props(question)
+        metrics = {
+            'answers_count': answers_response.json()['total_size'] if answers_response.status_code == 200 else 0,
+        }
+        relation_properties = {}
+
+        if date_in_range(question.date_created, from_date, to_date):
+            event_id = f"{parent_item_id}-c"
+            event_time_utc = question.date_created.isoformat()
+            relation_type = "question_created"
+            info = {
+                'parent_item_id':       parent_item_id,
+                'event_id':             event_id,
+                'relation_type':        relation_type,
+                'employee_id':          query.member,
+                'event_time_utc':       event_time_utc,
+                'time_zone':            time_zone,
+                'relation_properties':  relation_properties,
+                'event_properties':     event_properties,
+                'metrics':              metrics
+            }
+            events.append(info)
+
+        if len(dates) == 4:
+            continue # No answers were found, skip to next question
+        
+        for answer in answers_response.json()['entries']:
+            answer_date = datetime.strptime(answer['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z")
+            if not date_in_range(answer_date, from_date, to_date): continue
+
+            is_solved = answer.get('new_status') == 'Solved'
+            event_id = f"{parent_item_id}-{'s' if is_solved else 'a'}{answer['index']}"
+            relation_type = "question_solved" if is_solved else "question_answered"
+
+            event_time_utc = answer_date.isoformat()
+            employee_id = answer['owner_link'].split('~')[-1]
+            relation_properties = extract_answer_relation_props(answer)
+            info = {
+                'parent_item_id':       parent_item_id,
+                'event_id':             event_id,
+                'relation_type':        relation_type,
+                'employee_id':          employee_id,
+                'event_time_utc':       event_time_utc,
+                'time_zone':            time_zone,
+                'relation_properties':  relation_properties,
+                'event_properties':     event_properties,
+                'metrics':              {}
+            }
+            events.append(info)
+
+    return events
+
+
+@activity.defn
+async def transform_data(events: List[dict]) -> List[Event]:
+    source_kind_id = "launchpad"
+    event_type = "question_answer"
+    return [Event(
+        id=                     None,  # ID will be assigned by the database
+        source_kind_id=         source_kind_id,
+        parent_item_id=         e['parent_item_id'],
+        event_id=               e['event_id'],
+
+        event_type=             event_type,
+        relation_type=          e['relation_type'],
+
+        employee_id=            e['employee_id'],
+
+        event_time_utc=         e['event_time_utc'],
+        week=                   None, # Calculated in __post_init__
+        timezone=               e.get('time_zone', 'UTC'),
+        event_time=             None, # Calculated in __post_init__
+
+        event_properties=       e.get('event_properties', {}),
+        relation_properties=    e.get('relation_properties', {}),
+        metrics=                e.get('metrics', {})
+    ) for e in events]
+
+
+@activity.defn
+async def load_data(events: List[Event]) -> int:
+    # TODO: Implement actual database loading logic
+    # The best method will probably be to create jobs in a db write queue 
+    # to allow for parallel loading to single database
+    print(f"Loading {len(events)} question_answer events into the database...")
+    for event in events:
+        print(f"Loading event: {event.event_id}")
+    return len(events)  # Return the number of events loaded
+
+
+"""
+Helper functions to extract properties from bug, activity, and message objects
+"""
+def extract_event_props(question) -> dict:
+    property_mappings = [
+        (question.title, 'title'),
+        (question.description, 'description'),
+        (question.language_link, 'language_link'),
+        (question.status, 'status'),
+        (question.web_link, 'link'),
+    ]
+    event_properties = {}
+    event_properties.update({key: value for value, key in property_mappings if value})
+    return event_properties
+
+
+def extract_answer_relation_props(answer) -> dict:
+    property_mappings = [
+        (answer['web_link'], 'link'),
+        (answer['content'], 'content'),
+        (answer['subject'], 'subject'),
+        (answer['bug_attachments_collection_link'], 'attachments_link'),
+        (answer['question_link'], 'question_link'),
+        (answer['action'], 'action'),
+        (answer['new_status'], 'new_status'),
+    ]
+    relation_properties = {}
+    relation_properties.update({key: value for value, key in property_mappings if value})
+    return relation_properties

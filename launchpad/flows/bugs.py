@@ -1,8 +1,12 @@
 from typing import List, Any
-from launchpad.query import LaunchpadQuery
+
+from temporalio import activity
+
 from models.etl_flow import ETLFlow
 from models.event import Event
-from temporalio import activity
+
+from launchpad.query import LaunchpadQuery
+
 from launchpadlib.launchpad import Launchpad
 
 
@@ -34,7 +38,7 @@ bug_task_status = [
 
 @activity.defn
 async def extract_data(query: LaunchpadQuery) -> List[dict]:
-    lp = Launchpad.login_anonymously(query.application_name, query.service_root, query.version)
+    lp = Launchpad.login_anonymously(consumer_name=query.application_name, service_root=query.service_root, version=query.version)
     if not lp:
         raise ValueError("Failed to connect to Launchpad API")
     
@@ -117,7 +121,6 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
 
 @activity.defn
 async def transform_data(events: List[dict]) -> List[Event]:
-    print(events[0])
     source_kind_id = "launchpad"
     event_type = "bug"
     return [Event(
