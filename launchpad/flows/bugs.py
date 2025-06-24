@@ -38,7 +38,13 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
     if not lp:
         raise ValueError("Failed to connect to Launchpad API")
     
-    person = lp.people[query.member]
+    try:
+        person = lp.people[query.member]
+    except KeyError:
+        return []
+    except Exception as e:
+        raise ValueError(f"Error fetching member %s: %s", query.member, e)
+
     if not person: return []
     
     bug_tasks = person.searchTasks(
@@ -53,56 +59,32 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
     events = []
     for task in bug_tasks:
         bug = task.bug
-        parent_item_id = str(bug.id)
+        parent_item_id = f"b-{bug.id}"
 
-        # Filter out None/empty values and create dictionary
-        property_mappings = [
-            (bug.title, 'title'),
-            (bug.description, 'description'),
-            (bug.web_link, 'link'),
-            (bug.heat, 'heat'),
-            (bug.information_type, 'information_type'),
-            (bug.private, 'private'),
-            (bug.security_related, 'security_related'),
-            (bug.name, 'name'),
-            (bug.tags if len(bug.tags) > 0 else None, 'tags'),
-
-            (task.status, 'status'),
-            (task.importance, 'importance'),
-            (task.is_complete, 'is_complete'),
-            (task.owner_link, 'owner_link'),
-        ]
-        event_properties = {}
-        event_properties.update({key: value for value, key in property_mappings if value})
+        event_properties = extract_bug_event_props(bug, task)
+        metrics = extract_bug_metrics(bug)
 
         # Look for bug activities linked to member
         for idx, activity in enumerate(bug.activity_collection):
             if activity.person_link != person_link:
                 continue # If the member is not involved in the bug, we can skip it
 
-            event_id = f"{bug.id}-activity-{idx}"
+            event_id = f"{parent_item_id}-a{idx}"
             event_time_utc = activity.datechanged.isoformat()
             relation_type = 'bug_activity'
 
-            # Filter out None/empty values and create dictionary
-            property_mappings = [
-                (activity.whatchanged, 'whatchanged'),
-                (activity.oldvalue, 'old_value'),
-                (activity.newvalue, 'new_value'),
-                (activity.message, 'message'),
-            ]
-            relation_properties = {}
-            relation_properties.update({key: value for value, key in property_mappings if value})
+            relation_properties = extract_activity_relation_props(activity)
             
             activity_info = {
-                'parent_item_id': parent_item_id,
-                'event_id': event_id,
-                'relation_type': relation_type,
-                'employee_id': query.member,
-                'event_time_utc': event_time_utc,
-                'time_zone': time_zone,
-                'relation_properties': relation_properties,
-                'event_properties': event_properties
+                'parent_item_id':       parent_item_id,
+                'event_id':             event_id,
+                'relation_type':        relation_type,
+                'employee_id':          query.member,
+                'event_time_utc':       event_time_utc,
+                'time_zone':            time_zone,
+                'relation_properties':  relation_properties,
+                'event_properties':     event_properties,
+                'metrics':              metrics
             }
             events.append(activity_info)
 
@@ -111,29 +93,22 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
             if message.owner_link != person_link:
                 continue # If the member is not involved in the message, we can skip it
 
-            event_id = f"{bug.id}-message-{idx}"
+            event_id = f"{parent_item_id}-m{idx}"
             event_time_utc = message.date_created.isoformat()
             relation_type = 'bug_message'
 
-            property_mappings = [
-                (message.web_link, 'link'),
-                (message.owner_link, 'owner'),
-                (message.content, 'content'),
-                (message.subject, 'subject'),
-            ]
-            # Filter out None/empty values and create dictionary
-            relation_properties = {}
-            relation_properties.update({key: value for value, key in property_mappings if value})
+            relation_properties = extract_message_relation_props(message)
 
             message_info = {
-                'parent_item_id': parent_item_id,
-                'event_id': event_id,
-                'relation_type': relation_type,
-                'employee_id': query.member,
-                'event_time_utc': event_time_utc,
-                'time_zone': time_zone,
-                'relation_properties': relation_properties,
-                'event_properties': event_properties
+                'parent_item_id':       parent_item_id,
+                'event_id':             event_id,
+                'relation_type':        relation_type,
+                'employee_id':          query.member,
+                'event_time_utc':       event_time_utc,
+                'time_zone':            time_zone,
+                'relation_properties':  relation_properties,
+                'event_properties':     event_properties,
+                'metrics':              metrics
             }
             events.append(message_info)
 
@@ -176,3 +151,73 @@ async def load_data(events: List[Event]) -> int:
     for event in events:
         print(f"Loading event: {event.event_id}")
     return len(events)  # Return the number of events loaded
+
+
+"""
+Helper functions to extract properties from bug, activity, and message objects
+"""
+def extract_bug_event_props(bug, task) -> dict:
+    # Filter out None/empty values and create dictionary
+    property_mappings = [
+        (bug.title, 'title'),
+        (bug.description, 'description'),
+        (bug.web_link, 'link'),
+        (bug.information_type, 'information_type'),
+        (bug.private, 'private'),
+        (bug.security_related, 'security_related'),
+        (bug.name, 'name'),
+        (bug.tags if len(bug.tags) > 0 else None, 'tags'),
+
+        (task.status, 'status'),
+        (task.importance, 'importance'),
+        (task.is_complete, 'is_complete'),
+        (task.owner_link, 'owner_link'),
+    ]
+    event_properties = {}
+    event_properties.update({key: value for value, key in property_mappings if value})
+
+    return event_properties
+
+
+def extract_bug_metrics(bug) -> dict:
+    # Filter out None/empty values and create dictionary
+    property_mappings = [
+        (bug.heat, 'heat'),
+        (bug.message_count, 'message_count'),
+        (bug.number_of_duplicates, 'number_of_duplicates'),
+        (bug.users_affected_count, 'users_affected_count'),
+        (bug.users_affected_count_with_dupes, 'users_affected_count_with_duplicates'),
+        (bug.users_unaffected_count, 'users_unaffected_count'),
+    ]
+    metrics = {}
+    metrics.update({key: value for value, key in property_mappings if value})
+
+    return metrics
+
+
+def extract_activity_relation_props(activity) -> dict:
+    # Filter out None/empty values and create dictionary
+    property_mappings = [
+        (activity.whatchanged, 'whatchanged'),
+        (activity.oldvalue, 'old_value'),
+        (activity.newvalue, 'new_value'),
+        (activity.message, 'message'),
+    ]
+    relation_properties = {}
+    relation_properties.update({key: value for value, key in property_mappings if value})
+
+    return relation_properties
+
+
+def extract_message_relation_props(message) -> dict:
+    # Filter out None/empty values and create dictionary
+    property_mappings = [
+        (message.web_link, 'link'),
+        (message.owner_link, 'owner'),
+        (message.content, 'content'),
+        (message.subject, 'subject'),
+    ]
+    relation_properties = {}
+    relation_properties.update({key: value for value, key in property_mappings if value})
+
+    return relation_properties
