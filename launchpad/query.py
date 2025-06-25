@@ -22,7 +22,10 @@ class LaunchpadQuery(Query):
                  version: str,
                  member: str,
                  data_date_start: str,
-                 data_date_end: str) -> None:
+                 data_date_end: str,
+                 source_kind_id: str,
+                 event_type: str
+                 ) -> None:
         """
         Initialize LaunchpadQuery with connection and scope parameters.
         
@@ -40,6 +43,7 @@ class LaunchpadQuery(Query):
         self.member = member
         self.data_date_start = data_date_start
         self.data_date_end = data_date_end
+        super().__init__(source_kind_id, event_type)
 
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> "LaunchpadQuery":
@@ -65,7 +69,9 @@ class LaunchpadQuery(Query):
             version=data.get("version", ""),
             member=data.get("member", ""),
             data_date_start=data.get("data_date_start", ""),
-            data_date_end=data.get("data_date_end", "")
+            data_date_end=data.get("data_date_end", ""),
+            source_kind_id="launchpad",
+            event_type=data.get("event_type", "")
         )
 
     def to_summary_base(self) -> Dict[str, Any]:

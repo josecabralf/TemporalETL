@@ -21,7 +21,10 @@ async def main():
             "version": "devel",
             "member": MEMBER,
             "data_date_start": FROM_DATE,
-            "data_date_end": TO_DATE
+            "data_date_end": TO_DATE,
+
+            "source_kind_id": "launchpad",
+            "event_type": "bug"
         }
     ]
     

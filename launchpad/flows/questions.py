@@ -5,8 +5,7 @@ from typing import List, Any
 
 from temporalio import activity
 
-from models.etl_flow import ETLFlow
-from models.event import Event
+from models.etl_flow import ETLFlow, transform_data, load_data
 from models.date_utils import date_in_range, dates_in_range
 
 from launchpad.query import LaunchpadQuery
@@ -112,39 +111,6 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
             events.append(info)
 
     return events
-
-
-@activity.defn
-async def transform_data(events: List[dict]) -> List[Event]:
-    source_kind_id = "launchpad"
-    event_type = "question_answer"
-    return [Event(
-        id=                     None,  # ID will be assigned by the database
-        source_kind_id=         source_kind_id,
-        parent_item_id=         e['parent_item_id'],
-        event_id=               e['event_id'],
-
-        event_type=             event_type,
-        relation_type=          e['relation_type'],
-
-        employee_id=            e['employee_id'],
-
-        event_time_utc=         e['event_time_utc'],
-        week=                   None, # Calculated in __post_init__
-        timezone=               e.get('time_zone', 'UTC'),
-        event_time=             None, # Calculated in __post_init__
-
-        event_properties=       e.get('event_properties', {}),
-        relation_properties=    e.get('relation_properties', {}),
-        metrics=                e.get('metrics', {})
-    ) for e in events]
-
-
-@activity.defn
-async def load_data(events: List[Event]) -> int:
-    from db.db import Database
-    db = Database()
-    return db.insert_events_batch(events)  # Uses connection from pool
 
 
 """

@@ -10,7 +10,20 @@ class Query:
     Query objects encapsulate the parameters and logic needed to extract data 
     from specific sources like Launchpad APIs, databases, or other systems.
     """
-    
+    source_kind_id: str
+    event_type: str
+
+    def __init__(self, source_kind_id: str, event_type: str) -> None:
+        """
+        Initialize the query with source kind and event type.
+        
+        Args:
+            source_kind_id: Identifier for the data source kind (e.g., "launchpad")
+            event_type: Type of event being queried (e.g., "bug", "question")
+        """
+        self.source_kind_id = source_kind_id
+        self.event_type = event_type
+
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> "Query":
         """
