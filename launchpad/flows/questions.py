@@ -59,6 +59,7 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
         if answers_response.status_code == 200:
             dates.extend(datetime.strptime(comment['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z") for comment in answers_response.json()['entries'])
         if not dates_in_range(dates, from_date, to_date): continue # Skip if no dates are in range
+        del dates
 
         event_properties = extract_event_props(question)
         metrics = {
@@ -83,7 +84,7 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
             }
             events.append(info)
 
-        if len(dates) == 4:
+        if answers_response.status_code != 200:
             continue # No answers were found, skip to next question
         
         for answer in answers_response.json()['entries']:

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import Dict, Any, Type
+from importlib import import_module
+from typing import Dict, Any
 
 
 @dataclass
@@ -68,8 +69,6 @@ class QueryFactory:
     queryTypes: Dict[str, str] = {
         "LaunchpadQuery": "launchpad.query.LaunchpadQuery",
         # Add additional query types here as they are implemented
-        # "DatabaseQuery": "database.query.DatabaseQuery",
-        # "APIQuery": "api.query.APIQuery",
     }
 
     @staticmethod
@@ -92,13 +91,19 @@ class QueryFactory:
             AttributeError: If the specified class cannot be found in the module
         """
         if query_type not in QueryFactory.queryTypes:
-            raise ValueError(f"Unknown query type: %s", query_type)
+            raise ValueError("Unknown query type: %s", query_type)
 
         module_name, class_name = QueryFactory.queryTypes[query_type].rsplit('.', 1)
-        module = __import__(module_name, fromlist=[class_name])
-        query_class = getattr(module, class_name)
+        
+        try:
+            module = import_module(module_name)
+            query_class = getattr(module, class_name)
+        except ImportError as e:
+            raise ImportError("Cannot import module '%s': %s", module_name, e)
+        except AttributeError as e:
+            raise AttributeError("Module '%s' does not have class '%s': %s", module_name, class_name, e)
 
         if not issubclass(query_class, Query):
-            raise TypeError(f"{query_class.__name__} is not a subclass of IQuery")
+            raise TypeError("Class '%s' is not a subclass of Query", query_class.__name__)
 
         return query_class.from_dict(args)

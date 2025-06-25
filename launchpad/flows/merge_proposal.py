@@ -58,7 +58,7 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
 
     events = []
     for merge_proposal in merge_proposals:
-        parent_item_id = f"mp-{merge_proposal.self_link.split('/')[-1]}"
+        parent_item_id = f"mp-{merge_proposal.source_git_path}-{merge_proposal.self_link.split('/')[-1]}"  # mp-<project>/<branch>-<id>
 
         dates = [
             merge_proposal.date_created, 
@@ -71,6 +71,7 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
         if comments_response.status_code == 200:
             dates.extend(datetime.strptime(comment['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z") for comment in comments_response.json()['entries'])
         if not dates_in_range(dates, from_date, to_date): continue # skip if no dates are in range
+        del dates
 
         event_properties = extract_event_props(merge_proposal)
         metrics = {
@@ -155,7 +156,7 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
             }
             events.append(info)
 
-        if len(dates) == 4:
+        if comments_response.status_code != 200:
             continue # No comments were found, skip to next merge proposal
 
         for comment in comments_response.json()['entries']:

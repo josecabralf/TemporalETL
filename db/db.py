@@ -275,14 +275,14 @@ class Database:
                             INSERT INTO launchpad_events (
                                 source_kind_id, 
                                 parent_item_id, 
-                                event_id,
+                                event_id, 
                                 event_type, 
                                 relation_type, 
-                                employee_id,
+                                employee_id, 
                                 event_time_utc, 
                                 week, 
                                 timezone, 
-                                event_time,
+                                event_time, 
                                 event_properties, 
                                 relation_properties, 
                                 metrics

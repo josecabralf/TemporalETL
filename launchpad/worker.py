@@ -62,9 +62,8 @@ class LaunchpadWorker:
             WorkerError: If the worker encounters a fatal error during execution
             ConnectionError: If connection to Temporal server is lost
         """
-        if self.worker is None:
-            self.worker = self.get_worker()
-            
+        self.worker = self.worker if self.worker else self.get_worker()
+
         logger.info("Starting Temporal worker...")
         logger.info("Listening on task queue: %s", self.worker.task_queue)
 
