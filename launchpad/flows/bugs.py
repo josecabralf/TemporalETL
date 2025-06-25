@@ -42,7 +42,7 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
         raise ValueError("Failed to connect to Launchpad API")
     
     try:
-        person = lp.people[query.member]
+        person = lp.people[query.member] # type: ignore
     except KeyError:
         return []
     except Exception as e:
