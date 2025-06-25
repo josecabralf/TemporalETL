@@ -147,13 +147,9 @@ async def transform_data(events: List[dict]) -> List[Event]:
 
 @activity.defn
 async def load_data(events: List[Event]) -> int:
-    # TODO: Implement actual database loading logic
-    # The best method will probably be to create jobs in a db write queue 
-    # to allow for parallel loading to single database
-    print(f"Loading {len(events)} bug events into the database...")
-    for event in events:
-        print(f"Loading event: {event.event_id}")
-    return len(events)  # Return the number of events loaded
+    from db.db import Database
+    db = Database()
+    return db.insert_events_batch(events)  # Uses connection from pool
 
 
 """

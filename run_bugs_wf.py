@@ -40,7 +40,7 @@ async def main():
             workflow=BugsFlow.run,
             args=(input,),
             id=workflow_id,
-            task_queue=TASK_QUEUE,
+            task_queue=BugsFlow.queue_name,
         )
         
         workflow_handles.append(handle)
@@ -67,7 +67,6 @@ if __name__ == "__main__":
     TEMPORAL_HOST = os.getenv("TEMPORAL_HOST", "localhost:7233")
 
     MEMBER = 'member_1'
-    TASK_QUEUE = "launchpad-bugs-task-queue"
 
     print(f"Starting workflows with parameters:\n"
           f"  Application ID: {LP_APP_ID}\n"
@@ -75,6 +74,6 @@ if __name__ == "__main__":
           f"  Date Range: {FROM_DATE} to {TO_DATE}\n"
           f"  Temporal Host: {TEMPORAL_HOST}\n"
           f"  Member: {MEMBER}\n"
-          f"  Task Queue: {TASK_QUEUE}\n")
+          f"  Task Queue: {BugsFlow.queue_name}\n")
 
     asyncio.run(main())

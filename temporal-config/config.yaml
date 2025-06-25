@@ -13,7 +13,7 @@ persistence:
       sql:
         pluginName: "postgres"
         databaseName: "temporal"
-        connectAddr: "postgresql:5432"
+        connectAddr: "temporal-db:5432"
         connectProtocol: "tcp"
         user: "temporal"
         password: "temporal"
@@ -24,7 +24,7 @@ persistence:
       sql:
         pluginName: "postgres"
         databaseName: "temporal_visibility"
-        connectAddr: "postgresql:5432"
+        connectAddr: "temporal-db:5432"
         connectProtocol: "tcp"
         user: "temporal"
         password: "temporal"
