@@ -40,6 +40,75 @@ direction LR
 	    +get_activities() List[Any]
     }
 
+    class Query {
+	    +source_kind_id: str
+	    +event_type: str
+	    +from_dict(data: dict) Query*
+	    +to_summary_base() dict*
+    }
+    <<interface>> Query
+
+    class QueryFactory {
+	    +queryTypes: Dict[str, str]
+	    +create(query_type: str, args: dict) Query
+    }
+
+    class FlowInput {
+	    +query_type: str
+	    +args: Dict[str, Any]
+    }
+
+    class ExtractMethodFactory {
+	    +method_name: str
+	    +extractCmdTypes: Dict[str, str]
+	    +create(extract_cmd_type: str) Callable
+    }
+
+    class ETLWorker {
+	    +client: Client
+	    +task_queue: str
+	    +etl_workflow_type: Type[ETLFlow]
+	    +get_worker() Worker
+	    +run() void
+    }
+
+    class extract_data {
+    }
+
+    namespace launchpad {
+        class Bugs {
+            +extract_data() List[Dict[str, Any]]
+        }
+
+        class MergeProposals {
+            +extract_data() List[Dict[str, Any]]
+        }
+
+        class Questions {
+            +extract_data() List[Dict[str, Any]]
+        }
+
+        class LaunchpadQuery {
+            +application_name: str
+            +service_root: str
+            +version: str
+            +member: str
+            +data_date_start: str
+            +data_date_end: str
+            +from_dict(data: dict) LaunchpadQuery
+            +to_summary_base() dict
+        }
+	}
+
+    class Database {
+	    -_instance: Database
+	    -_lock: Lock
+	    +insert_events_batch(events: List[Event]) int
+	    +get_connection() Connection
+	    +health_check() bool
+	    +get_pool_status() dict
+    }
+
     class Event {
 	    +id: Optional[int]
 	    +source_kind_id: str
@@ -57,87 +126,25 @@ direction LR
 	    +metrics: Optional[Dict]
     }
 
-    class Query {
-	    +source_kind_id: str
-	    +event_type: str
-	    +from_dict(data: dict) Query*
-	    +to_summary_base() dict*
-    }
-
-    class LaunchpadQuery {
-	    +application_name: str
-	    +service_root: str
-	    +version: str
-	    +member: str
-	    +data_date_start: str
-	    +data_date_end: str
-	    +from_dict(data: dict) LaunchpadQuery
-	    +to_summary_base() dict
-    }
-
-    class QueryFactory {
-	    +queryTypes: Dict[str, str]
-	    +create(query_type: str, args: dict) Query
-    }
-
-    class FlowInput {
-	    +query_type: str
-	    +args: Dict[str, Any]
-    }
-
-    class Database {
-	    -_instance: Database
-	    -_lock: Lock
-	    +insert_events_batch(events: List[Event]) int
-	    +get_connection() Connection
-	    +health_check() bool
-	    +get_pool_status() dict
-    }
-
-    class ExtractMethodFactory {
-	    +method_name: str
-	    +extractCmdTypes: Dict[str, str]
-	    +create(extract_cmd_type: str) Callable
-    }
-
-    class ETLWorker {
-	    +client: Client
-	    +task_queue: str
-	    +etl_workflow_type: Type[ETLFlow]
-	    +get_worker() Worker
-	    +run() void
-    }
-
-    class Bugs {
-	    +extract_data() List[Dict[str, Any]]
-    }
-
-    class MergeProposals {
-	    +extract_data() List[Dict[str, Any]]
-    }
-
-    class Questions {
-	    +extract_data() List[Dict[str, Any]]
-    }
-
-	<<interface>> Query
-
     ETLWorker --> ETLFlow : registers
 
     ETLFlow --> QueryFactory : uses
     ETLFlow --> ExtractMethodFactory : uses
     ETLFlow ..> Database : inserts
-    
+
     FlowInput --> ETLFlow : receives
 
     QueryFactory ..> Query : creates
+
     Query <|.. LaunchpadQuery
 
     Database ..> Event : stores
 
-    ExtractMethodFactory <|.. Bugs
-    ExtractMethodFactory <|.. MergeProposals
-    ExtractMethodFactory <|.. Questions
+    ExtractMethodFactory ..> extract_data : creates
+
+    extract_data <|.. Bugs
+    extract_data <|.. MergeProposals
+    extract_data <|.. Questions
 ```
 
 ## 🚀 Features
