@@ -119,13 +119,13 @@ async def load_data(events: List[Event]) -> int:
     db = Database()
 
     already_inserted: int = int(activity.info().heartbeat_details[0]) if activity.info().heartbeat_details else 0
+    loaded = len(events)
 
-    total = len(events)
-    for i in range(already_inserted, total, ETLFlow.BATCH_SIZE):
+    for i in range(already_inserted, loaded, ETLFlow.BATCH_SIZE):
         batch = events[i:i + ETLFlow.BATCH_SIZE]
         db.insert_events_batch(batch)
 
         inserted = i + len(batch)
         activity.heartbeat(inserted)
 
-    return total
+    return loaded

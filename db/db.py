@@ -292,22 +292,20 @@ class Database:
                             RETURNING id
                         """
 
-                        values = [
-                            (
-                                e.source_kind_id,
-                                e.parent_item_id,
-                                e.event_id,
-                                e.event_type,
-                                e.relation_type,
-                                e.employee_id,
-                                e.event_time_utc,
-                                e.week,
-                                e.timezone,
-                                e.event_time,
-                                psycopg2.extras.Json(e.event_properties) if e.event_properties else None,
-                                psycopg2.extras.Json(e.relation_properties) if e.relation_properties else None,
-                                psycopg2.extras.Json(e.metrics) if e.metrics else None
-                            )
+                        values = [(
+                            e.source_kind_id,
+                            e.parent_item_id,
+                            e.event_id,
+                            e.event_type,
+                            e.relation_type,
+                            e.employee_id,
+                            e.event_time_utc,
+                            e.week,
+                            e.timezone,
+                            e.event_time,
+                            psycopg2.extras.Json(e.event_properties) if e.event_properties else None,
+                            psycopg2.extras.Json(e.relation_properties) if e.relation_properties else None,
+                            psycopg2.extras.Json(e.metrics) if e.metrics else None)
                             for e in events
                         ]
 
