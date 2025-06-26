@@ -1,13 +1,16 @@
+from contextlib import contextmanager
+
 import logging
-import psycopg2
-import psycopg2.extras
-import psycopg2.pool
-import threading
 import os
+import threading
 import time
 from typing import List, Optional
+
+import psycopg2.extras
+import psycopg2.pool
+from psycopg2 import sql
+
 from models.event import Event
-from contextlib import contextmanager
 
 
 # Configure logging
@@ -103,32 +106,41 @@ class Database:
         """
         Ensure the database schema exists using a connection from the pool.
         """
+        import re
+        
+        schema_name = os.getenv('EVENTS_TABLE', 'launchpad_events')
+        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', schema_name):
+            raise ValueError(f"Invalid table name: {schema_name}")
+        
+        logger.info(f"Ensuring schema exists in the database")
         with self.get_connection() as conn:
             try:
                 with conn.cursor() as cursor:
-                    cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS launchpad_events (
-                            id SERIAL PRIMARY KEY,
-                            source_kind_id VARCHAR NOT NULL,
-                            parent_item_id VARCHAR,
-                            event_id VARCHAR NOT NULL UNIQUE,
+                    # Use psycopg2's SQL identifier to safely quote the table name
+                    cursor.execute(
+                        sql.SQL("""
+                            CREATE TABLE IF NOT EXISTS {} (
+                                id SERIAL PRIMARY KEY,
+                                source_kind_id VARCHAR NOT NULL,
+                                parent_item_id VARCHAR,
+                                event_id VARCHAR NOT NULL UNIQUE,
 
-                            event_type VARCHAR NOT NULL,
-                            relation_type VARCHAR NOT NULL,
+                                event_type VARCHAR NOT NULL,
+                                relation_type VARCHAR NOT NULL,
 
-                            employee_id VARCHAR NOT NULL,
+                                employee_id VARCHAR NOT NULL,
 
-                            event_time_utc TIMESTAMP NOT NULL,
-                            week DATE NOT NULL,
-                            timezone VARCHAR,
-                            event_time TIMESTAMP,
+                                event_time_utc TIMESTAMP NOT NULL,
+                                week DATE NOT NULL,
+                                timezone VARCHAR,
+                                event_time TIMESTAMP,
 
-                            event_properties JSONB,
-                            relation_properties JSONB,
-                            metrics JSONB
-                        )
-                    """)
-                    logger.info("Ensured launchpad_events table exists")
+                                event_properties JSONB,
+                                relation_properties JSONB,
+                                metrics JSONB
+                            )
+                        """).format(sql.Identifier(schema_name)))
+                    logger.info("Ensured %s table exists", schema_name)
                 conn.commit()
             except Exception as e:
                 conn.rollback()
