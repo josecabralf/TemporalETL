@@ -1,31 +1,24 @@
 from datetime import datetime
 import pytz
 import requests
-from typing import List, Any
+from typing import List, Dict, Any
 
-from temporalio import activity
-
-from models.etl_flow import ETLFlow, transform_data, load_data
 from models.date_utils import date_in_range, dates_in_range
 
 from launchpad.query import LaunchpadQuery
 
 from launchpadlib.launchpad import Launchpad
 
+import logging
 
-class QuestionsFlow(ETLFlow):
-    """
-    ETL workflow implementation for processing Launchpad question and answer data.
-    """
-    queue_name = "launchpad-questions-task-queue"
-    
-    @staticmethod
-    def get_activities() -> List[Any]:
-        return [extract_data, transform_data, load_data]
-    
 
-@activity.defn
-async def extract_data(query: LaunchpadQuery) -> List[dict]:
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
+    logger.info("Extracting Launchpad question data for member: %s", query.member)
     lp = Launchpad.login_anonymously(consumer_name=query.application_name, service_root=query.service_root, version=query.version)
     if not lp:
         raise ValueError("Failed to connect to Launchpad API")
@@ -45,6 +38,7 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
     time_zone = person.time_zone
 
     events = []
+    logger.info("Found %d questions for member %s", len(questions), query.member)
     for question in questions:
         parent_item_id = f"q-{question.id}"
 
@@ -87,6 +81,7 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
         if answers_response.status_code != 200:
             continue # No answers were found, skip to next question
         
+        logger.info("Processing %d answers for question %s", answers_response.json()['total_size'], question.id)
         for answer in answers_response.json()['entries']:
             answer_date = datetime.strptime(answer['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z")
             if not date_in_range(answer_date, from_date, to_date): continue

@@ -1,16 +1,15 @@
 import os
 import asyncio
 from temporalio.client import Client
-from launchpad.worker import LaunchpadWorker
-from launchpad.flows.bugs import BugsFlow
-
+from models.etl_flow import ETLFlow
+from models.etl_worker import ETLWorker
 
 async def main():
     # Connect to local Temporal service
     client = await Client.connect(TEMPORAL_HOST)
     
     # Create worker - this needs to be done in async context
-    worker = LaunchpadWorker(client, BugsFlow.queue_name, BugsFlow)
+    worker = ETLWorker(client, ETLFlow.queue_name, ETLFlow)
     
     # Run the worker
     await worker.run()
@@ -19,4 +18,11 @@ async def main():
 if __name__ == "__main__":
     TEMPORAL_HOST = os.getenv("TEMPORAL_HOST", "localhost:7233")
 
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Worker stopped by user.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        print("Worker shutdown complete.")

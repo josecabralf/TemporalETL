@@ -1,28 +1,21 @@
 from datetime import datetime
 import pytz
 import requests
-from typing import List, Any
+from typing import List, Dict, Any
 
-from temporalio import activity
-
-from models.etl_flow import ETLFlow, transform_data, load_data
 from models.date_utils import date_in_range, dates_in_range
 
 from launchpad.query import LaunchpadQuery
 
 from launchpadlib.launchpad import Launchpad
 
+import logging
 
-class MergeProposalFlow(ETLFlow):
-    """
-    ETL workflow implementation for processing Launchpad merge proposal data.
-    """
-    queue_name = "launchpad-merges-task-queue"
-    
-    @staticmethod
-    def get_activities() -> List[Any]:
-        return [extract_data, transform_data, load_data]
-    
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 merge_proposal_status = [
     'Work in progress',
@@ -36,8 +29,8 @@ merge_proposal_status = [
 ]
 
 
-@activity.defn
-async def extract_data(query: LaunchpadQuery) -> List[dict]:
+async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
+    logger.info("Extracting Launchpad merge proposal data for member: %s", query.member)
     lp = Launchpad.login_anonymously(consumer_name=query.application_name, service_root=query.service_root, version=query.version)
     if not lp:
         raise ValueError("Failed to connect to Launchpad API")
@@ -57,7 +50,9 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
     time_zone = person.time_zone
 
     events = []
+    logger.info("Found %d merge proposals for member %s", len(merge_proposals), query.member)
     for merge_proposal in merge_proposals:
+        logger.info("Processing merge proposal: %s", merge_proposal.self_link)
         parent_item_id = f"mp-{merge_proposal.source_git_path}-{merge_proposal.self_link.split('/')[-1]}"  # mp-<project>/<branch>-<id>
 
         dates = [

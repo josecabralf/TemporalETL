@@ -1,23 +1,16 @@
-from typing import List, Any
-
-from temporalio import activity
-
-from models.etl_flow import ETLFlow, transform_data, load_data
+from typing import List, Dict, Any
 
 from launchpad.query import LaunchpadQuery
 
 from launchpadlib.launchpad import Launchpad
 
+import logging
 
-class BugsFlow(ETLFlow):
-    """
-    ETL workflow implementation for processing Launchpad bug data.
-    """
-    queue_name = "launchpad-bugs-task-queue"
-    
-    @staticmethod
-    def get_activities() -> List[Any]:
-        return [extract_data, transform_data, load_data]
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 bug_task_status = [
     "New", 
@@ -35,8 +28,8 @@ bug_task_status = [
     "Does Not Exist"
 ]
 
-@activity.defn
-async def extract_data(query: LaunchpadQuery) -> List[dict]:
+async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
+    logger.info("Extracting Launchpad bug data for member: %s", query.member)
     lp = Launchpad.login_anonymously(consumer_name=query.application_name, service_root=query.service_root, version=query.version)
     if not lp:
         raise ValueError("Failed to connect to Launchpad API")
@@ -60,6 +53,7 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
     time_zone = person.time_zone
 
     events = []
+    logger.info("Found %d bug tasks for member %s", len(bug_tasks), query.member)
     for task in bug_tasks:
         bug = task.bug
         parent_item_id = f"b-{bug.id}"
@@ -68,6 +62,7 @@ async def extract_data(query: LaunchpadQuery) -> List[dict]:
         metrics = extract_bug_metrics(bug)
 
         # Look for bug activities linked to member
+        logger.info("Processing bug %s with %d activities and %d messages", bug.id, len(bug.activity_collection), len(bug.messages))
         for idx, activity in enumerate(bug.activity_collection):
             if activity.person_link != person_link:
                 continue # If the member is not involved in the bug, we can skip it

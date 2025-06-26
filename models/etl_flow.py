@@ -6,6 +6,7 @@ from temporalio import activity, workflow
 
 from models.event import Event
 from models.query import QueryFactory
+from models.extract_cmd import ExtractMethodFactory
 
 
 # Configure logging
@@ -18,7 +19,7 @@ class ETLFlow:
     """
     Temporal workflow for processing Launchpad data through an ETL pipeline.
     """
-    queue_name: str
+    queue_name: str = "etl-task-queue"
     BATCH_SIZE: int = 1000
 
     @staticmethod
@@ -41,7 +42,7 @@ class ETLFlow:
             def get_activities() -> List[Any]:
                 return [extract_data, transform_data, load_data]
         """
-        raise NotImplementedError("Subclasses must implement get_activities() method.")
+        return [extract_data, transform_data, load_data]
 
     
     @workflow.run
@@ -67,7 +68,7 @@ class ETLFlow:
         summary["workflow_id"] = workflow.info().workflow_id
 
         extracted = await workflow.execute_activity(
-            "extract_data", query,
+            "extract_data", input, # pass in input so that query can be reconstructed
             start_to_close_timeout=timedelta(minutes=10),
         )
         logger.info(f"Extracted {len(extracted)} items from Launchpad.")
@@ -87,7 +88,15 @@ class ETLFlow:
         logger.info(f"Inserted {inserted} items into the database.")
 
         return summary
-    
+
+
+@activity.defn
+async def extract_data(input: Dict[str, Any]) -> List[dict]:
+    query = QueryFactory.create(input["type"], args=input["args"])
+    extract_data = ExtractMethodFactory.create(f'{query.source_kind_id}-{query.event_type}')
+    logger.info(f"Extracting data using method: {query.source_kind_id}.{query.event_type}.{extract_data.__name__} for query: {type(query).__name__}")
+    return await extract_data(query)
+
 
 @activity.defn
 async def transform_data(events: List[dict], source_kind_id: str, event_type: str) -> List[Event]:

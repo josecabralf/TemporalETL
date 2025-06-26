@@ -4,10 +4,10 @@ import os
 
 from temporalio.client import Client
 
+from models.etl_flow import ETLFlow
 from models.flow_input import FlowInput
 
 from launchpad.query import LaunchpadQuery
-from launchpad.flows.bugs import BugsFlow
 
 async def main():
     # Connect to Temporal server
@@ -23,8 +23,8 @@ async def main():
             "data_date_start": FROM_DATE,
             "data_date_end": TO_DATE,
 
-            "source_kind_id": "launchpad",
-            "event_type": "bug"
+            "source_kind_id": SOURCE_KIND_ID,
+            "event_type": EVENT_TYPE,
         }
     ]
     
@@ -40,10 +40,10 @@ async def main():
         )
         
         handle = await client.start_workflow(
-            workflow=BugsFlow.run,
+            workflow=ETLFlow.run,
             args=(input,),
             id=workflow_id,
-            task_queue=BugsFlow.queue_name,
+            task_queue=ETLFlow.queue_name,
         )
         
         workflow_handles.append(handle)
@@ -71,12 +71,17 @@ if __name__ == "__main__":
 
     MEMBER = 'member_1'
 
+    EVENT_TYPE = 'bugs'
+    SOURCE_KIND_ID = 'launchpad'
+
     print(f"Starting workflows with parameters:\n"
           f"  Application ID: {LP_APP_ID}\n"
           f"  Service Root: {LP_WEB_ROOT}\n"
           f"  Date Range: {FROM_DATE} to {TO_DATE}\n"
           f"  Temporal Host: {TEMPORAL_HOST}\n"
           f"  Member: {MEMBER}\n"
-          f"  Task Queue: {BugsFlow.queue_name}\n")
+          f"  Event Type: {EVENT_TYPE}\n"
+          f"  Source Kind ID: {SOURCE_KIND_ID}\n"
+          f"  Task Queue: {ETLFlow.queue_name}\n")
 
     asyncio.run(main())
