@@ -17,9 +17,9 @@ class FlowInput:
         args (Dict[str, Any]): Dictionary containing all parameters specific
                               to the query type
     """
-    type: str
+    query_type: str
     args: Dict[str, Any]
 
-    def __init__(self, type: Type, args: Dict[str, Any]) -> None:
-        self.type = type.__name__
+    def __init__(self, query_type: str, args: Dict[str, Any]) -> None:
+        self.query_type = query_type
         self.args = args

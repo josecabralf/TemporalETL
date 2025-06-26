@@ -5,8 +5,9 @@ from typing import Dict, List, Any
 from temporalio import activity, workflow
 
 from models.event import Event
-from models.query import QueryFactory
 from models.extract_cmd import ExtractMethodFactory
+from models.flow_input import FlowInput
+from models.query import QueryFactory
 
 
 # Configure logging
@@ -44,9 +45,8 @@ class ETLFlow:
         """
         return [extract_data, transform_data, load_data]
 
-    
     @workflow.run
-    async def run(self, input: Dict[str, Any]) -> Dict[str, Any]:
+    async def run(self, input: FlowInput) -> Dict[str, Any]:
         """
         Execute the ETL workflow pipeline.
         
@@ -62,7 +62,7 @@ class ETLFlow:
             ActivityError: If any activity fails after exhausting retries
             ValueError: If input parameters are invalid or missing
         """
-        query = QueryFactory.create(input["type"], args=input["args"])
+        query = QueryFactory.create(input.query_type, args=input.args)
 
         summary = query.to_summary_base()
         summary["workflow_id"] = workflow.info().workflow_id
@@ -91,8 +91,8 @@ class ETLFlow:
 
 
 @activity.defn
-async def extract_data(input: Dict[str, Any]) -> List[dict]:
-    query = QueryFactory.create(input["type"], args=input["args"])
+async def extract_data(input: FlowInput) -> List[dict]:
+    query = QueryFactory.create(input.query_type, args=input.args)
     extract_data = ExtractMethodFactory.create(f'{query.source_kind_id}-{query.event_type}')
     logger.info(f"Extracting data using method: {query.source_kind_id}.{query.event_type}.{extract_data.__name__} for query: {type(query).__name__}")
     return await extract_data(query)

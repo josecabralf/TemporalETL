@@ -35,7 +35,7 @@ async def main():
         workflow_id = f"launchpad-workflow-{i+1}-{uuid.uuid4()}"
         
         input = FlowInput(
-            type=LaunchpadQuery,
+            query_type=config["source_kind_id"],
             args=config
         )
         

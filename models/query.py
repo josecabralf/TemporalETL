@@ -67,7 +67,7 @@ class QueryFactory:
     # Registry of available query types mapped to their module paths
     # Format: "QueryTypeName": "module.path.ClassName"
     queryTypes: Dict[str, str] = {
-        "LaunchpadQuery": "launchpad.query.LaunchpadQuery",
+        "launchpad": "launchpad.query.LaunchpadQuery",
         # Add additional query types here as they are implemented
     }
 
