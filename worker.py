@@ -1,7 +1,6 @@
 import os
 import asyncio
 from temporalio.client import Client
-from models.etl_flow import ETLFlow
 from models.etl_worker import ETLWorker
 
 async def main():
@@ -9,7 +8,7 @@ async def main():
     client = await Client.connect(TEMPORAL_HOST)
     
     # Create worker - this needs to be done in async context
-    worker = ETLWorker(client, ETLFlow.queue_name, ETLFlow)
+    worker = ETLWorker(client)
     
     # Run the worker
     await worker.run()

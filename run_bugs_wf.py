@@ -7,8 +7,6 @@ from temporalio.client import Client
 from models.etl_flow import ETLFlow
 from models.flow_input import FlowInput
 
-from launchpad.query import LaunchpadQuery
-
 async def main():
     # Connect to Temporal server
     client = await Client.connect(TEMPORAL_HOST)
