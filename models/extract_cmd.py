@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 class ExtractMethodFactory:
     method_name = "extract_data"
     extractCmdTypes: Dict[str, str] = {
+        # identifier                 # module path
         "launchpad-bugs":            "launchpad.flows.bugs",
         "launchpad-merge_proposals": "launchpad.flows.merge_proposals",
         "launchpad-questions":       "launchpad.flows.questions",
@@ -25,7 +26,7 @@ class ExtractMethodFactory:
         Args:
             extract_cmd_type: String identifier for the extract command type
 
-        Returns: Callable function that implements the extract command logic
+        Returns: Callable function that implements the extract logic
         
         Raises:
             ValueError: If the extract command type is not recognized
