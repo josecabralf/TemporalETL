@@ -31,6 +31,12 @@ The system extracts data from Launchpad APIs (bugs, merge proposals, questions),
 ## 📊 Class Diagram
 
 ```mermaid
+---
+config:
+  theme: neo
+  look: neo
+  layout: dagre
+---
 classDiagram
 direction LR
     class ETLFlow {
