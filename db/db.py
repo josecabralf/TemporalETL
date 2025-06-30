@@ -108,9 +108,9 @@ class Database:
         """
         import re
         
-        schema_name = os.getenv('EVENTS_TABLE', 'launchpad_events')
-        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', schema_name):
-            raise ValueError(f"Invalid table name: {schema_name}")
+        self.schema_name = os.getenv('EVENTS_TABLE', 'launchpad_events')
+        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', self.schema_name):
+            raise ValueError(f"Invalid table name: {self.schema_name}")
         
         logger.info(f"Ensuring schema exists in the database")
         with self.get_connection() as conn:
@@ -139,8 +139,8 @@ class Database:
                                 relation_properties JSONB,
                                 metrics JSONB
                             )
-                        """).format(sql.Identifier(schema_name)))
-                    logger.info("Ensured %s table exists", schema_name)
+                        """).format(sql.Identifier(self.schema_name)))
+                    logger.info("Ensured %s table exists", self.schema_name)
                 conn.commit()
             except Exception as e:
                 conn.rollback()
@@ -280,64 +280,87 @@ class Database:
         
         for attempt in range(max_retries + 1):
             try:
-                with self.get_connection() as conn:
-                    with conn.cursor() as cursor:
-                        # Prepare the insert statement
-                        insert_query = """
-                            INSERT INTO launchpad_events (
-                                source_kind_id, 
-                                parent_item_id, 
-                                event_id, 
-                                event_type, 
-                                relation_type, 
-                                employee_id, 
-                                event_time_utc, 
-                                week, 
-                                timezone, 
-                                event_time, 
-                                event_properties, 
-                                relation_properties, 
-                                metrics
-                            ) 
-                            VALUES %s
-                            ON CONFLICT (event_id) DO NOTHING
-                            RETURNING id
-                        """
-
-                        values = [(
-                            e.source_kind_id,
-                            e.parent_item_id,
-                            e.event_id,
-                            e.event_type,
-                            e.relation_type,
-                            e.employee_id,
-                            e.event_time_utc,
-                            e.week,
-                            e.timezone,
-                            e.event_time,
-                            psycopg2.extras.Json(e.event_properties) if e.event_properties else None,
-                            psycopg2.extras.Json(e.relation_properties) if e.relation_properties else None,
-                            psycopg2.extras.Json(e.metrics) if e.metrics else None)
-                            for e in events
-                        ]
-
-                        psycopg2.extras.execute_values(cursor, insert_query, values)
-                        inserted_count = cursor.rowcount
-                        
-                        conn.commit()
-                        logger.info(f"Successfully inserted {inserted_count} events")
-                        return inserted_count
-                        
+                return self._execute_batch_insert(events)
             except Exception as e:
                 logger.warning(f"Batch insert attempt {attempt + 1} failed: {e}")
                 if attempt == max_retries:
                     logger.error(f"All {max_retries + 1} batch insert attempts failed. Last error: {e}")
                     raise
-                else:
-                    time.sleep(1.0 * (2 ** attempt))  # Exponential backoff
+                time.sleep(1.0 * (2 ** attempt))  # Exponential backoff
         
         return 0
-    
+
+    def _execute_batch_insert(self, events: List[Event]) -> int:
+        """Execute the actual batch insert in a single transaction."""
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                # Insert events
+                insert_query = sql.SQL("""
+                    INSERT INTO {} (
+                        source_kind_id, 
+                        parent_item_id, 
+                        event_id, 
+                        event_type, 
+                        relation_type, 
+                        employee_id, 
+                        event_time_utc, 
+                        week, 
+                        timezone, 
+                        event_time, 
+
+                        event_properties, 
+                        relation_properties, 
+                        metrics
+                    ) 
+                    VALUES %s
+                    ON CONFLICT (event_id) DO NOTHING
+                    RETURNING id
+                """).format(sql.Identifier(self.schema_name))
+
+                values = [(
+                    e.source_kind_id, 
+                    e.parent_item_id, 
+                    e.event_id, 
+                    e.event_type,
+                    e.relation_type, 
+                    e.employee_id, 
+                    e.event_time_utc, 
+                    e.week,
+                    e.timezone, 
+                    e.event_time,
+
+                    psycopg2.extras.Json(e.event_properties) if e.event_properties else None,
+                    psycopg2.extras.Json(e.relation_properties) if e.relation_properties else None,
+                    psycopg2.extras.Json(e.metrics) if e.metrics else None)
+                    for e in events
+                ]
+
+                psycopg2.extras.execute_values(cursor, insert_query, values)
+                inserted_count = cursor.rowcount
+
+                # Batch update parent event properties
+                parent_updates = {e.parent_item_id: e.event_properties for e in events }
+                update_query = sql.SQL("""
+                    UPDATE {} 
+                    SET event_properties = data.event_properties::jsonb
+                    FROM (VALUES %s) AS data(parent_item_id, event_properties)
+                    WHERE {}.parent_item_id = data.parent_item_id
+                """).format(sql.Identifier(self.schema_name), sql.Identifier(self.schema_name))
+                
+                update_values = [
+                    (parent_id, psycopg2.extras.Json(props))
+                    for parent_id, props in parent_updates.items()
+                ]
+                
+                psycopg2.extras.execute_values(cursor, update_query, update_values)
+                logger.info(f"Updated event properties for {len(parent_updates)} parent items")
+
+                # Single commit for entire transaction
+                conn.commit()
+                logger.info(f"Successfully inserted {inserted_count} events")
+                
+                return inserted_count
+
     def health_check(self) -> bool:
         """
         Perform a health check on the database connection pool.
