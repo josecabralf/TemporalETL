@@ -2,6 +2,11 @@
 
 A robust ETL (Extract, Transform, Load) framework built on [Temporal](https://temporal.io/) for processing Launchpad data. This project provides a scalable, fault-tolerant solution for extracting events from Ubuntu's Launchpad platform and transforming them into standardized event records for analytics and reporting.
 
+**Latest Updates (June 2025):**
+- ✨ **Decorator-based Architecture**: Auto-discovery and registration of query types and extraction methods This simplifies the addition of new data sources by using `@extract_method()` and `@query_type()` decorators
+- 📦 **Modular Worker System**: Unified `ETLWorker` class for simplified worker management
+- 🛡️ **Enhanced Database Layer**: Thread-safe singleton with automatic schema creation and improved connection pooling
+
 ## 📚 Table of Contents
 
 - [Architecture Overview](#-architecture-overview)
@@ -17,14 +22,15 @@ A robust ETL (Extract, Transform, Load) framework built on [Temporal](https://te
 
 ## 🏗️ Architecture Overview
 
-TemporalETL uses Temporal workflows to orchestrate reliable ETL pipelines that can handle failures, retries, and long-running operations gracefully. The system is built around a modular flow architecture where:
+TemporalETL uses Temporal workflows to orchestrate reliable ETL pipelines that can handle failures, retries, and long-running operations gracefully. The system is built around a modular, decorator-based architecture that enables automatic discovery and registration of components:
 
 - **ETL Flow System**: Concrete `ETLFlow` implementation that orchestrates extract, transform, and load operations through Temporal activities
-- **Query System**: Flexible query abstraction with `Query` base class, `LaunchpadQuery` implementation, and `QueryFactory` for dynamic instantiation
-- **Extract Method Factory**: `ExtractMethodFactory` dynamically loads appropriate extraction methods based on source and event type
+- **Query System**: Flexible query abstraction with `Query` base class and decorator-based registration via `@query_type()`. `QueryFactory` provides auto-discovery and dynamic instantiation of query types
+- **Extract Method Factory**: `ExtractMethodFactory` with decorator-based registration via `@extract_method()` automatically discovers and loads extraction methods from flow directories
 - **Input Standardization**: `FlowInput` provides consistent parameter handling across different workflow types
+- **ETL Worker Management**: `ETLWorker` class manages Temporal worker lifecycle with automatic workflow and activity registration
 - **Activity Functions**: Discrete units of work (extract, transform, load) that can be independently scaled and retried
-- **Database Layer**: PostgreSQL-based storage with connection pooling, thread-safety, and batch processing capabilities
+- **Database Layer**: Thread-safe singleton PostgreSQL database with connection pooling, batch processing, and automatic schema creation
 
 The system extracts data from Launchpad APIs (bugs, merge proposals, questions), transforms it into standardized event formats, and loads it into a PostgreSQL database for analytics.
 
@@ -39,58 +45,77 @@ config:
 ---
 classDiagram
 direction LR
-    class ETLFlow {
-	    +queue_name: str
-	    +BATCH_SIZE: int
-	    +run(input: FlowInput) Dict[str, Any]
-	    +get_activities() List[Any]
-    }
 
-    class Query {
-	    +source_kind_id: str
-	    +event_type: str
-	    +from_dict(data: dict) Query*
-	    +to_summary_base() dict*
-    }
-    <<interface>> Query
+    FlowInput --> ETLFlow : receives
 
-    class QueryFactory {
-	    +queryTypes: Dict[str, str]
-	    +create(query_type: str, args: dict) Query
+    ETLWorker --> ETLFlow : registers
+
+    ETLFlow --> ExtractMethodFactory : uses
+    ExtractMethodFactory ..> extract_data : creates
+    extract_data <|.. LaunchpadBugs
+    extract_data <|.. LaunchpadMergeProposals
+    extract_data <|.. LaunchpadQuestions
+
+    ETLFlow --> QueryFactory : uses
+    ETLFlow ..> Database : inserts
+    QueryFactory ..> Query : creates
+    Query <|.. LaunchpadQuery
+
+    Database ..> Event : stores
+
+    class ETLWorker {
+        +client: Client
+        +worker: Worker
+        +get_worker() Worker
+        +run() void
     }
 
     class FlowInput {
-	    +query_type: str
-	    +args: Dict[str, Any]
+        +query_type: str
+        +args: Dict[str, Any]
+    }
+
+    class ETLFlow {
+        +queue_name: str
+        +BATCH_SIZE: int
+        +run(input: FlowInput) Dict[str, Any]
+        +get_activities() List[Any]
     }
 
     class ExtractMethodFactory {
-	    +method_name: str
-	    +extractCmdTypes: Dict[str, str]
-	    +create(extract_cmd_type: str) Callable
+        -_modules_imported: bool
+        -_discover_flow_directories() List[str]
+        -_discover_and_import_modules() void
+        +create(extract_cmd_type: str) Callable
+        +get_registered_types() List[str]
     }
 
-    class ETLWorker {
-	    +client: Client
-	    +task_queue: str
-	    +etl_workflow_type: Type[ETLFlow]
-	    +get_worker() Worker
-	    +run() void
+    class QueryFactory {
+        -_modules_imported: bool
+        -_discover_query_directories() List[str]
+        -_discover_and_import_modules() void
+        +create(query_type: str, args: dict) Query
+        +get_registered_types() List[str]
     }
 
-    class extract_data {
+    class Query {
+        +source_kind_id: str
+        +event_type: str
+        +from_dict(data: dict) Query*
+        +to_summary_base() dict*
     }
+    <<interface>> Query
 
     namespace launchpad {
-        class Bugs {
+        class LaunchpadBugs {
             +extract_data() List[Dict[str, Any]]
         }
 
-        class MergeProposals {
+        class LaunchpadMergeProposals {
             +extract_data() List[Dict[str, Any]]
         }
 
-        class Questions {
+        class LaunchpadQuestions {
             +extract_data() List[Dict[str, Any]]
         }
 
@@ -104,65 +129,54 @@ direction LR
             +from_dict(data: dict) LaunchpadQuery
             +to_summary_base() dict
         }
-	}
-
-    class Database {
-	    -_instance: Database
-	    -_lock: Lock
-	    +insert_events_batch(events: List[Event]) int
-	    +get_connection() Connection
-	    +health_check() bool
-	    +get_pool_status() dict
     }
+    <<query_type>> LaunchpadQuery
+    <<extract_method>> LaunchpadBugs
+    <<extract_method>> LaunchpadMergeProposals
+    <<extract_method>> LaunchpadQuestions
 
     class Event {
-	    +id: Optional[int]
-	    +source_kind_id: str
-	    +parent_item_id: str
-	    +event_id: str
-	    +event_type: str
-	    +relation_type: str
-	    +employee_id: str
-	    +event_time_utc: str
-	    +week: Optional[str]
-	    +timezone: Optional[str]
-	    +event_time: Optional[str]
-	    +event_properties: Optional[Dict]
-	    +relation_properties: Optional[Dict]
-	    +metrics: Optional[Dict]
+        +id: Optional[int]
+        +source_kind_id: str
+        +parent_item_id: str
+        +event_id: str
+        +event_type: str
+        +relation_type: str
+        +employee_id: str
+        +event_time_utc: str
+        +week: Optional[str]
+        +timezone: Optional[str]
+        +event_time: Optional[str]
+        +event_properties: Optional[Dict]
+        +relation_properties: Optional[Dict]
+        +metrics: Optional[Dict]
     }
 
-    ETLWorker --> ETLFlow : registers
-
-    ETLFlow --> QueryFactory : uses
-    ETLFlow --> ExtractMethodFactory : uses
-    ETLFlow ..> Database : inserts
-
-    FlowInput --> ETLFlow : receives
-
-    QueryFactory ..> Query : creates
-
-    Query <|.. LaunchpadQuery
-
-    Database ..> Event : stores
-
-    ExtractMethodFactory ..> extract_data : creates
-
-    extract_data <|.. Bugs
-    extract_data <|.. MergeProposals
-    extract_data <|.. Questions
+    class Database {
+        -_instance: Database
+        -_lock: Lock
+        -_initialized: bool
+        +insert_events_batch(events: List[Event]) int
+        +get_connection() Connection
+        +health_check() bool
+        +get_pool_status() dict
+        +_create_schema() void
+    }
 ```
+
 
 ## 🚀 Features
 
 - **Temporal-based Orchestration**: Leverages Temporal for reliable workflow execution with automatic retries and error handling
-- **Multi-Source Data Extraction**: Support for Launchpad bugs, merge proposals, and questions with pluggable extraction methods
+- **Multi-Source Data Extraction**: Support for Launchpad bugs, merge proposals, and questions with decorator-based pluggable extraction methods
 - **ETL Pipeline Workflows**: Specialized `ETLFlow` implementation for Extract, Transform, Load operations with batch processing
 - **Fault Tolerance**: Built-in resilience against network failures, API rate limits, and transient errors with exponential backoff
 - **Scalable Processing**: Support for parallel workflow execution across multiple workers with configurable batch sizes
 - **Event Standardization**: Transforms diverse Launchpad data into standardized event records with rich metadata
-- **PostgreSQL Integration**: Production-ready database storage with connection pooling, thread-safety, and batch operations
-- **Query Abstraction**: Flexible query system with `QueryFactory` for dynamic query type creation and `ExtractMethodFactory` for method routing
+- **PostgreSQL Integration**: Production-ready database storage with connection pooling, thread-safety, batch operations, and automatic schema creation
+- **Auto-Discovery Architecture**: Decorator-based registration system with automatic discovery of query types and extraction methods
+- **Thread-Safe Database**: Singleton database manager with connection pooling and health monitoring
+- **Comprehensive Logging**: Structured logging throughout the system for observability and debugging
 
 ## 📋 Prerequisites
 
@@ -172,11 +186,11 @@ direction LR
 - Launchpad API credentials (for production usage)
 
 ### Key Python Dependencies
-- **temporalio**: Temporal workflow SDK for Python
-- **psycopg2-binary**: PostgreSQL database adapter
-- **launchpadlib**: Ubuntu Launchpad API client library
-- **pytz**: Timezone handling for event processing
-- **python-dotenv**: Environment variable management
+- **temporalio**: Temporal workflow SDK for Python (v1.12.0)
+- **psycopg2-binary**: PostgreSQL database adapter (v2.9.10)
+- **launchpadlib**: Ubuntu Launchpad API client library (v2.1.0)
+- **pytz**: Timezone handling for event processing (v2025.2)
+- **python-dotenv**: Environment variable management (v1.1.0)
 
 ## 🛠️ Installation
 
@@ -219,9 +233,27 @@ docker-compose ps
 # Access Temporal Web UI
 # Open http://localhost:8080 in your browser
 
-# Test with the bugs workflow
-python run_bugs_worker.py &
+# Start a worker in one terminal
+python worker.py
+
+# In another terminal, test with the bugs workflow
 python run_bugs_wf.py
+```
+
+**Available Scripts:**
+- `worker.py`: Generic ETL worker that handles all workflow types
+- `run_bugs_wf.py`: Example workflow runner for Launchpad bugs data
+- `run_launchpad_queuer.py`: Workflow queuer for batch processing
+
+**Exploring Registered Components:**
+```python
+# See all registered query types
+from models.query import QueryFactory
+print("Query types:", QueryFactory.get_registered_types())
+
+# See all registered extract methods  
+from models.extract_cmd import ExtractMethodFactory
+print("Extract methods:", ExtractMethodFactory.get_registered_types())
 ```
 
 ## 🚀 Usage
@@ -240,7 +272,7 @@ async def run_etl_workflow():
     
     # Create input with query parameters
     flow_input = FlowInput(
-        query_type="launchpad",
+        query_type="launchpad",  # Uses @query_type("launchpad") registered LaunchpadQuery
         args={
             "application_name": "my-launchpad-app",
             "service_root": "production", 
@@ -250,7 +282,7 @@ async def run_etl_workflow():
             "data_date_end": "2024-03-31",
 
             "source_kind_id": "launchpad",
-            "event_type": "bugs"
+            "event_type": "bugs"  # Routes to @extract_method("launchpad-bugs")
         }
     )
 
@@ -320,20 +352,20 @@ Production-ready configurations in `temporal-config/`:
 
 ### Supported Event Types
 
-The system currently supports these Launchpad data sources:
-- **`launchpad-bugs`**: Bug reports and their activities
-- **`launchpad-merge_proposals`**: Code merge proposals and reviews  
-- **`launchpad-questions`**: Questions and answers from Launchpad
+The system currently supports these Launchpad data sources (automatically registered via decorators):
+- **`launchpad-bugs`**: Bug reports and their activities (`@extract_method("launchpad-bugs")`)
+- **`launchpad-merge_proposals`**: Code merge proposals and reviews (`@extract_method("launchpad-merge_proposals")`)
+- **`launchpad-questions`**: Questions and answers from Launchpad (`@extract_method("launchpad-questions")`)
 
-New event types can be added by extending the `ExtractMethodFactory.extractCmdTypes` registry.
+New event types can be added by creating new extraction methods and registering them with the `@extract_method("custom-name")` decorator. The system will automatically discover and register them.
 
 ## 🗄️ Database Schema
 
-The application uses PostgreSQL with a comprehensive events table that supports rich event metadata:
+The application uses PostgreSQL with a comprehensive events table that supports rich event metadata. The database schema is automatically created during initialization:
 
 ### Events Table Structure
 ```sql
-CREATE TABLE [events_schema_name] (
+CREATE TABLE IF NOT EXISTS events (
     id SERIAL PRIMARY KEY,
     source_kind_id VARCHAR NOT NULL,
     parent_item_id VARCHAR,
@@ -374,22 +406,25 @@ CREATE TABLE [events_schema_name] (
 ### Connection Pool Configuration
 The database layer uses PostgreSQL connection pooling for optimal performance:
 
-- **Thread-safe singleton pattern** with double-checked locking
-- **Configurable pool size** via environment variables
+- **Thread-safe singleton pattern** with double-checked locking for initialization
+- **Configurable pool size** via environment variables (`DB_MIN_CONN`, `DB_MAX_CONN`)
 - **Health checks** with automatic connection recovery
-- **Batch processing** for efficient bulk inserts
-- **Exponential backoff** for retry logic
+- **Batch processing** for efficient bulk inserts with configurable batch sizes
+- **Exponential backoff** for retry logic on connection failures
+- **Automatic schema creation** during initialization
 
 ## 🔄 Extending the System
 
 ### Adding New Data Sources
 
-1. **Create extraction method**:
+1. **Create extraction method with decorator**:
 ```python
 # In source/flows/custom.py
 from typing import List, Dict, Any
 from source.query import SourceQuery
+from models.extract_cmd import extract_method
 
+@extract_method(name="source-custom")  # Auto-registered via decorator
 async def extract_data(query: SourceQuery) -> List[Dict[str, Any]]:
     """Extract data from your custom data source"""
     # Implementation here
@@ -398,40 +433,31 @@ async def extract_data(query: SourceQuery) -> List[Dict[str, Any]]:
     return events
 ```
 
-2. **Register the extraction method**:
-```python
-# In models/extract_cmd.py - add to extractCmdTypes
-ExtractMethodFactory.extractCmdTypes = {
-    ...
-    "source-custom": "source.flows.custom",  # Add your new type
-}
-```
+2. **The method is automatically registered** - no manual registration needed! The `ExtractMethodFactory` will auto-discover and register it.
 
 3. **Use the new extraction method**:
 ```python
 # In your workflow runner
 flow_input = FlowInput(
-    query_type="launchpad",
+    query_type="source",  # Must match your query type
     args={
-        "application_name": "my-app",
-        "service_root": "production",
-        "version": "devel", 
-        "member": "username",
-        "data_date_start": "2024-01-01",
-        "data_date_end": "2024-03-31",
-        "source_kind_id": "launchpad",
-        "event_type": "custom"  # This will route to launchpad-custom
+        "endpoint": "https://api.custom-source.com",
+        "api_key": "your-api-key", 
+        "date_range": "2024-01-01:2024-03-31",
+        "source_kind_id": "source",
+        "event_type": "custom"  # This will route to source-custom
     }
 )
 ```
 
 ### Adding New Query Types
 
-1. **Create a new query class**:
+1. **Create a new query class with decorator**:
 ```python
 # in source/query.py
-from models.query import Query
+from models.query import Query, query_type
 
+@query_type("source")  # Auto-registered via decorator
 class SourceQuery(Query):
     def __init__(self, endpoint: str, api_key: str, date_range: str, 
                  source_kind_id: str, event_type: str):
@@ -440,9 +466,9 @@ class SourceQuery(Query):
         self.date_range = date_range
         super().__init__(source_kind_id, event_type)
     
-    @classmethod
-    def from_dict(cls, data: dict):
-        return cls(
+    @staticmethod
+    def from_dict(data: dict):
+        return SourceQuery(
             endpoint=data.get("endpoint", ""),
             api_key=data.get("api_key", ""),
             date_range=data.get("date_range", ""),
@@ -457,14 +483,7 @@ class SourceQuery(Query):
         }
 ```
 
-2. **Register the query type**:
-```python
-# In models/query.py
-QueryFactory.queryTypes = {
-    ...
-    "source": "source.query.SourceQuery",  # Add new type
-}
-```
+2. **The query type is automatically registered** - no manual registration needed! The `QueryFactory` will auto-discover and register it when the module is imported.
 
 ### Best Practices for Extensions
 
@@ -475,6 +494,8 @@ QueryFactory.queryTypes = {
 - **Logging**: Use structured logging for better observability
 - **Schema Validation**: Validate event data structure before database insertion
 - **Connection Pooling**: Leverage the existing PostgreSQL connection pool for database operations
+- **Decorator Registration**: Use `@query_type()` and `@extract_method()` decorators for automatic component discovery
+- **Module Organization**: Place extraction methods in `flows/` subdirectories and query classes in `query.py` files for auto-discovery
 
 ## 📚 Additional Resources
 - **[Temporal Documentation](https://docs.temporal.io/)** - Complete guide to Temporal workflows and activities
