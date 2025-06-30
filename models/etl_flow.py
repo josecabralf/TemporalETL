@@ -1,6 +1,6 @@
 import logging
 from datetime import timedelta
-from typing import Dict, List, Any
+from typing import Any, Dict, List, Tuple
 
 from temporalio import activity, workflow
 
@@ -62,19 +62,17 @@ class ETLFlow:
             ActivityError: If any activity fails after exhausting retries
             ValueError: If input parameters are invalid or missing
         """
-        query = QueryFactory.create(input.query_type, args=input.args)
+        summary: Dict[str, Any] = { "workflow_id": workflow.info().workflow_id }
 
-        summary = query.to_summary_base()
-        summary["workflow_id"] = workflow.info().workflow_id
-
-        extracted = await workflow.execute_activity(
+        extracted_summary, extracted = await workflow.execute_activity(
             "extract_data", input, # pass in input so that query can be reconstructed
             start_to_close_timeout=timedelta(minutes=10),
         )
+        summary.update(extracted_summary)
         logger.info(f"Extracted {len(extracted)} items from Launchpad.")
 
         transformed = await workflow.execute_activity(
-            "transform_data", args=(extracted, query.source_kind_id, query.event_type),
+            "transform_data", args=(extracted, input.args["source_kind_id"], input.args["event_type"]),
             start_to_close_timeout=timedelta(minutes=1),
         )
         summary["items_processed"] = len(transformed)
@@ -91,11 +89,11 @@ class ETLFlow:
 
 
 @activity.defn
-async def extract_data(input: FlowInput) -> List[dict]:
+async def extract_data(input: FlowInput) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     query = QueryFactory.create(input.query_type, args=input.args)
     extract_data = ExtractMethodFactory.create(f'{query.source_kind_id}-{query.event_type}')
     logger.info(f"Extracting data using method: {query.source_kind_id}.{query.event_type}.{extract_data.__name__} for query: {type(query).__name__}")
-    return await extract_data(query)
+    return (query.to_summary_base(), await extract_data(query))
 
 
 @activity.defn

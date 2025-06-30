@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 from typing import Dict, Any
 
-from models.query import Query
+from models.query import Query, query_type
 
 
 @dataclass
+@query_type("launchpad")
 class LaunchpadQuery(Query):
     """
     Query implementation for Launchpad API data extraction.

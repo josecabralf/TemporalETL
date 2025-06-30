@@ -1,6 +1,13 @@
 from dataclasses import dataclass
 from importlib import import_module
-from typing import Dict, Any
+import logging
+import os
+from typing import Dict, Any, Type
+
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -55,56 +62,122 @@ class Query:
         raise NotImplementedError("Subclasses must implement to_summary_base() method.")
 
 
+# Global registry for query types
+_query_type_registry: Dict[str, Type["Query"]] = {}
+
+
+def query_type(query_type_id: str):
+    """
+    Decorator to register query types automatically.
+    
+    Args:
+        query_type_id: String identifier for the query type
+        
+    Returns:
+        Decorated class that is registered in the global registry
+    """
+    def decorator(cls: Type) -> Type:
+        # Check if the class already inherits from Query
+        if not issubclass(cls, Query):
+            raise TypeError(f"Class {cls.__name__} must inherit from Query base class to be registered as a query.")
+        _query_type_registry[query_type_id] = cls
+        return cls
+    
+    return decorator
+
+
 class QueryFactory:
     """
     Factory class for creating query instances dynamically based on type identifiers.
-    
-    Class Attributes:
-        queryTypes (Dict[str, str]): Registry mapping query type names to
-                                   their module.class paths
+    Uses decorator-based registration for automatic discovery of query types.
     """
+    _modules_imported = False
 
-    # Registry of available query types mapped to their module paths
-    # Format: "QueryTypeName": "module.path.ClassName"
-    queryTypes: Dict[str, str] = {
-        # identifier    # class module path
-        "launchpad":    "launchpad.query.LaunchpadQuery",
-        # Add additional query types here as they are implemented
-    }
+    @staticmethod
+    def _discover_query_directories():
+        """
+        Automatically discover all directories that might contain query modules.
+        
+        Returns:
+            List of directory paths that might contain query modules
+        """
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        query_directories = []
+        
+        # Walk through all directories in project root
+        for item in os.listdir(project_root):
+            item_path = os.path.join(project_root, item)
+            
+            # Skip hidden directories, __pycache__, .venv, etc.
+            if item.startswith('.') or item.startswith('__') or item in ['venv', '.venv', 'node_modules']:
+                continue
+                
+            if os.path.isdir(item_path):
+                # Check if directory contains query.py or query modules
+                query_file = os.path.join(item_path, 'query.py')
+                if os.path.isfile(query_file):
+                    query_directories.append(item)
+        
+        return query_directories
+
+    @staticmethod
+    def _discover_and_import_modules():
+        """Auto-discover and import all query modules to trigger decorator registration."""
+        if QueryFactory._modules_imported:
+            return
+            
+        # Get project root directory
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # Dynamically discover query directories
+        query_directories = QueryFactory._discover_query_directories()
+        
+        for query_dir in query_directories:
+            query_module = f"{query_dir}.query"
+            
+            try:
+                import_module(query_module)
+            except ImportError as e:
+                logger.warning("Failed to import query module %s: %s", query_module, e)
+            except Exception as e:
+                logger.error("Error importing query module %s: %s", query_module, e)
+        
+        QueryFactory._modules_imported = True
 
     @staticmethod
     def create(query_type: str, args: Dict[str, Any]) -> Query:
         """
         Create a query instance of the specified type with the given arguments.
+        Auto-discovers and imports query modules, then checks the decorator registry.
 
         Args:
-            query_type: String identifier for the query type (must be registered
-                       in queryTypes dictionary)
+            query_type: String identifier for the query type (must be registered via decorator)
             args: Dictionary of arguments to pass to the query's from_dict() method
             
         Returns:
             Configured query instance ready for use in ETL workflows
             
         Raises:
-            ValueError: If query_type is not registered in queryTypes
-            TypeError: If the loaded class is not a Query subclass
-            ImportError: If the specified module cannot be imported
-            AttributeError: If the specified class cannot be found in the module
+            ValueError: If query_type is not registered in the decorator registry
         """
-        if query_type not in QueryFactory.queryTypes:
-            raise ValueError("Unknown query type: %s", query_type)
-
-        module_name, class_name = QueryFactory.queryTypes[query_type].rsplit('.', 1)
+        # Auto-discover and import all query modules
+        QueryFactory._discover_and_import_modules()
         
-        try:
-            module = import_module(module_name)
-            query_class = getattr(module, class_name)
-        except ImportError as e:
-            raise ImportError("Cannot import module '%s': %s", module_name, e)
-        except AttributeError as e:
-            raise AttributeError("Module '%s' does not have class '%s': %s", module_name, class_name, e)
+        # Check if the query type is registered via decorator
+        logger.info("Registered query types: %s", list(_query_type_registry.keys()))
+        if query_type in _query_type_registry:
+            query_class = _query_type_registry[query_type]
+            return query_class.from_dict(args)
+        
+        raise ValueError(f"Query type '{query_type}' not found in registry")
 
-        if not issubclass(query_class, Query):
-            raise TypeError("Class '%s' is not a subclass of Query", query_class.__name__)
-
-        return query_class.from_dict(args)
+    @staticmethod
+    def get_registered_types() -> list:
+        """
+        Get all registered query types from decorator registry.
+        
+        Returns:
+            List of all available query types
+        """
+        QueryFactory._discover_and_import_modules()
+        return list(_query_type_registry.keys())

@@ -29,7 +29,7 @@ bug_task_status = [
     "Does Not Exist"
 ]
 
-@extract_method.defn(name="launchpad-bugs")
+@extract_method(name="launchpad-bugs")
 async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
     logger.info("Extracting Launchpad bug data for member: %s", query.member)
     lp = Launchpad.login_anonymously(consumer_name=query.application_name, service_root=query.service_root, version=query.version)
