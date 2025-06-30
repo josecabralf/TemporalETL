@@ -45,7 +45,9 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
         raise ValueError(f"Error fetching member %s: %s", query.member, e)
 
     merge_proposals = person.getMergeProposals(status=merge_proposal_status)
-    if not merge_proposals: return []
+    if not merge_proposals: 
+        logger.info("No merge proposals found for member %s in the specified date range", query.member)
+        return []
 
     from_date = datetime.strptime(query.data_date_start, "%Y-%m-%d").replace(tzinfo=pytz.UTC)
     to_date = datetime.strptime(query.data_date_end, "%Y-%m-%d").replace(tzinfo=pytz.UTC)

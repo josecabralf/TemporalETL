@@ -23,5 +23,3 @@ if __name__ == "__main__":
         print("Worker stopped by user.")
     except Exception as e:
         print(f"An error occurred: {e}")
-    finally:
-        print("Worker shutdown complete.")

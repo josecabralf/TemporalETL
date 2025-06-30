@@ -49,7 +49,9 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
         created_since = query.data_date_start, created_before = query.data_date_end, 
         status = bug_task_status
     )
-    if not bug_tasks: return []
+    if not bug_tasks: 
+        logger.info("No bug tasks found for member %s in the specified date range", query.member)
+        return []
     
     person_link = person.self_link 
     time_zone = person.time_zone
