@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-@extract_method(extract_cmd_type="launchpad-questions")
+@extract_method.defn(name="launchpad-questions")
 async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
     logger.info("Extracting Launchpad question data for member: %s", query.member)
     lp = Launchpad.login_anonymously(consumer_name=query.application_name, service_root=query.service_root, version=query.version)

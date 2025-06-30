@@ -30,7 +30,7 @@ merge_proposal_status = [
 ]
 
 
-@extract_method(extract_cmd_type="launchpad-merge_proposals")
+@extract_method.defn(name="launchpad-merge_proposals")
 async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
     logger.info("Extracting Launchpad merge proposal data for member: %s", query.member)
     lp = Launchpad.login_anonymously(consumer_name=query.application_name, service_root=query.service_root, version=query.version)

@@ -14,25 +14,40 @@ logger = logging.getLogger(__name__)
 _extract_method_registry: Dict[str, Callable] = {}
 
 
-def extract_method(extract_cmd_type: str):
-    """
-    Decorator to register extract methods automatically.
-    
-    Args:
-        extract_cmd_type: String identifier for the extract command type
+class ExtractMethodDecorator:
+    @staticmethod
+    def defn(*, name: str):
+        """
+        Decorator to register extract methods automatically.
         
-    Returns:
-        Decorated function that is registered in the global registry
-    """
-    def decorator(func: Callable) -> Callable:
-        if extract_cmd_type in _extract_method_registry:
-            logger.warning("Overriding existing extract method for type: %s", extract_cmd_type)
+        Args:
+            name: Optional name for the extract method. If not provided, 
+                  uses the function name
         
-        _extract_method_registry[extract_cmd_type] = func
-        logger.info("Registered extract method '%s' for type '%s'", func.__name__, extract_cmd_type)
-        return func
-    
-    return decorator
+        Returns:
+            Decorated function that is registered in the global registry
+        
+        Usage:
+            @extract_method.defn(name="launchpad-bugs")
+            async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
+                ...
+        """
+        def decorator(func: Callable) -> Callable:
+            # Use provided name or derive from function name
+            extract_cmd_type = name if name else func.__name__
+            
+            if extract_cmd_type in _extract_method_registry:
+                logger.warning("Overriding existing extract method for type: %s", extract_cmd_type)
+            
+            _extract_method_registry[extract_cmd_type] = func
+            logger.info("Registered extract method '%s' for type '%s'", func.__name__, extract_cmd_type)
+            return func
+        
+        return decorator
+
+
+# Create the instance to use as decorator
+extract_method = ExtractMethodDecorator()
 
 
 class ExtractMethodFactory:
@@ -127,3 +142,14 @@ class ExtractMethodFactory:
             return extract_cmd_function
         
         raise ValueError(f"Extract command type '{extract_cmd_type}' not found in registry")
+
+    @staticmethod
+    def get_registered_types() -> list:
+        """
+        Get all registered extract command types from decorator registry.
+        
+        Returns:
+            List of all available extract command types
+        """
+        ExtractMethodFactory._discover_and_import_modules()
+        return list(_extract_method_registry.keys())
