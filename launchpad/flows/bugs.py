@@ -1,6 +1,7 @@
 from typing import List, Dict, Any
 
 from launchpad.query import LaunchpadQuery
+from models.extract_cmd import extract_method
 
 from launchpadlib.launchpad import Launchpad
 
@@ -28,6 +29,7 @@ bug_task_status = [
     "Does Not Exist"
 ]
 
+@extract_method(extract_cmd_type="launchpad-bugs")
 async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
     logger.info("Extracting Launchpad bug data for member: %s", query.member)
     lp = Launchpad.login_anonymously(consumer_name=query.application_name, service_root=query.service_root, version=query.version)
