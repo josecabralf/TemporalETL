@@ -1,8 +1,8 @@
 from datetime import datetime
 import pytz
-import requests
-from typing import List, Dict, Any, Iterator
+from typing import List, Dict, Any, AsyncIterator
 import logging
+import requests
 
 from models.date_utils import date_in_range, dates_in_range
 from models.extract_cmd import extract_method
@@ -16,17 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 @extract_method(name="launchpad-questions-streaming")
-async def extract_data_streaming(query: LaunchpadQuery) -> List[Dict[str, Any]]:
-    """
-    Streaming version of question data extraction that processes data in batches.
-    This reduces memory usage for large datasets.
-    """
-    logger.info("Starting streaming extraction of Launchpad question data for member: %s", query.member)
-    lp = Launchpad.login_anonymously(
-        consumer_name=query.application_name, 
-        service_root=query.service_root, 
-        version=query.version
-    )
+async def extract_data_streaming(query: LaunchpadQuery, chunk_size: int) -> AsyncIterator[List[Dict[str, Any]]]:
+    logger.info("Starting enhanced streaming extraction of Launchpad question data for member: %s with chunk size: %d", 
+                query.member, chunk_size)
+    lp = Launchpad.login_anonymously(consumer_name=query.application_name, service_root=query.service_root, version=query.version)
     if not lp:
         raise ValueError("Failed to connect to Launchpad API")
     
@@ -34,153 +27,90 @@ async def extract_data_streaming(query: LaunchpadQuery) -> List[Dict[str, Any]]:
         person = lp.people[query.member] # type: ignore
     except KeyError:
         logger.warning(f"Member {query.member} not found")
-        return []
+        return
     except Exception as e:
         raise ValueError(f"Error fetching member {query.member}: {e}")
 
-    if not person: 
-        return []
-    
     questions = person.searchQuestions(participation='Owner')
-    if not questions: 
-        logger.info("No questions found for member %s", query.member)
-        return []
+    if not questions:
+        logger.info("No questions found for member %s in the specified date range", query.member)
+        return
 
     from_date = datetime.strptime(query.data_date_start, "%Y-%m-%d").replace(tzinfo=pytz.UTC)
     to_date = datetime.strptime(query.data_date_end, "%Y-%m-%d").replace(tzinfo=pytz.UTC)
     time_zone = person.time_zone
+    person_link = person.self_link 
 
-    logger.info("Found %d questions for member %s", len(questions), query.member)
-    
-    # Process questions in streaming batches
-    all_events = []
-    batch_count = 0
-    
-    for event_batch in process_question_batch_streaming(
-        questions, from_date, to_date, query.member, time_zone, batch_size=20
-    ):
-        all_events.extend(event_batch)
-        batch_count += 1
-        
-        # Log progress for large datasets
-        if batch_count % 5 == 0:
-            logger.info(f"Processed {batch_count} question batches, {len(all_events)} events so far")
-    
-    logger.info(f"Streaming question extraction complete: {len(all_events)} total events from {batch_count} batches")
-    return all_events
-
-def process_question_batch_streaming(questions: List, from_date: datetime, to_date: datetime, 
-                                   member: str, time_zone: str, batch_size: int = 20) -> Iterator[List[Dict[str, Any]]]:
-    """
-    Process questions in batches to reduce memory usage and enable streaming.
-    
-    Args:
-        questions: List of questions from Launchpad
-        from_date: Start date for filtering
-        to_date: End date for filtering
-        member: Member identifier
-        time_zone: Member's timezone
-        batch_size: Number of questions to process per batch
-        
-    Yields:
-        Lists of event dictionaries for each batch
-    """
-    for i in range(0, len(questions), batch_size):
-        batch = questions[i:i + batch_size]
+    # Process questions in truly streaming fashion - yield each chunk as it's processed
+    chunk_count = 0
+    logger.info("Found %d questions for member %s, processing in streaming chunks of %d", len(questions), query.member, chunk_size)
+    for i in range(0, len(questions), chunk_size):
+        batch = questions[i:i + chunk_size]
         events_batch = []
         
-        logger.info(f"Processing question batch {i//batch_size + 1}: questions {i+1} to {min(i+batch_size, len(questions))} of {len(questions)}")
+        chunk_count += 1
+        logger.info(f"Processing chunk {chunk_count}: questions {i+1} to {min(i+chunk_size, len(questions))} of {len(questions)}")
         
         for question in batch:
-            logger.debug(f"Processing question: {question.self_link}")
-            
-            # Collect all relevant dates for this question
-            dates = [
-                question.date_created, 
-                question.date_last_query, 
-                question.date_last_response, 
-                question.date_solved
-            ]
-
-            # Fetch answers for this question
-            answers_response = None
             try:
-                answers_response = requests.get(question.messages_collection_link, timeout=30)
+                dates = [
+                    question.date_created, 
+                    question.date_last_query, 
+                    question.date_last_response, 
+                    question.date_solved
+                ]
+
+                answers_response = requests.get(question.messages_collection_link)
                 if answers_response.status_code == 200:
-                    answers_data = answers_response.json()
-                    dates.extend(
-                        datetime.strptime(comment['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z") 
-                        for comment in answers_data['entries']
-                    )
-                else:
-                    logger.warning(f"Failed to fetch answers for question {question.id}: HTTP {answers_response.status_code}")
-            except Exception as e:
-                logger.warning(f"Error fetching answers for question {question.id}: {e}")
-                
-            # Skip if no dates are in range
-            if not dates_in_range(dates, from_date, to_date): 
-                continue
+                    dates.extend(datetime.strptime(comment['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z") for comment in answers_response.json()['entries'])
+                if not dates_in_range(dates, from_date, to_date): continue # Skip if no dates are in range
 
-            parent_item_id = f"q-{question.id}"
-            event_properties = extract_event_props(question)
-            
-            # Calculate metrics based on answers response
-            answers_count = 0
-            if answers_response and answers_response.status_code == 200:
-                try:
-                    answers_data = answers_response.json()
-                    answers_count = answers_data['total_size']
-                except Exception as e:
-                    logger.warning(f"Error parsing answers JSON for question {question.id}: {e}")
-                    
-            metrics = {
-                'answers_count': answers_count,
-            }
+                # Parent item data
+                parent_item_id = f"q-{question.id}"
+                event_properties = extract_event_props(question)
+                metrics = extract_question_metrics(question)
 
-            # Process question creation event
-            if date_in_range(question.date_created, from_date, to_date):
-                events_batch.append({
-                    'parent_item_id':       parent_item_id,
-                    'event_id':             f"{parent_item_id}-c",
-                    'relation_type':        "question_created",
-                    'employee_id':          member,
-                    'event_time_utc':       question.date_created.isoformat(),
-                    'time_zone':            time_zone,
-                    'relation_properties':  {},
-                    'event_properties':     event_properties,
-                    'metrics':              metrics
-                })
+                if date_in_range(question.date_created, from_date, to_date):
+                    events_batch.append({
+                        'parent_item_id':       parent_item_id,
+                        'event_id':             f"{parent_item_id}-c",
+                        'relation_type':        "question_created",
+                        'employee_id':          query.member,
+                        'event_time_utc':       question.date_created.isoformat(),
+                        'time_zone':            time_zone,
+                        'relation_properties':  {},
+                        'event_properties':     event_properties,
+                        'metrics':              metrics
+                    })
 
-            # Process answers if available
-            if answers_response and answers_response.status_code == 200:
-                answers_data = answers_response.json()
-                logger.debug(f"Processing {answers_data['total_size']} answers for question {question.id}")
-                
-                for answer in answers_data['entries']:
-                    try:
-                        answer_date = datetime.strptime(answer['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z")
-                        if not date_in_range(answer_date, from_date, to_date): 
-                            continue
+                if answers_response.status_code != 200:
+                    continue # No answers were found, skip to next question
 
-                        is_solved = answer.get('new_status') == 'Solved'
-                        answer_employee_id = answer['owner_link'].split('~')[-1] if answer.get('owner_link') else member
-                        
-                        events_batch.append({
-                            'parent_item_id':       parent_item_id,
-                            'event_id':             f"{parent_item_id}-{'s' if is_solved else 'a'}{answer['index']}",
-                            'relation_type':        "question_solved" if is_solved else "question_answered",
-                            'employee_id':          answer_employee_id,
-                            'event_time_utc':       answer_date.isoformat(),
-                            'time_zone':            time_zone,
-                            'relation_properties':  extract_answer_relation_props(answer),
-                            'event_properties':     event_properties,
-                            'metrics':              {}
-                        })
-                    except Exception as e:
-                        logger.warning(f"Error processing answer {answer.get('index', 'unknown')} for question {question.id}: {e}")
+                logger.info("Processing %d answers for question %s", answers_response.json()['total_size'], question.id)
+                for answer in answers_response.json()['entries']:
+                    answer_date = datetime.strptime(answer['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z")
+                    if not date_in_range(answer_date, from_date, to_date): 
                         continue
+
+                    is_solved = answer.get('new_status') == 'Solved'
+                    events_batch.append({
+                        'parent_item_id':       parent_item_id,
+                        'event_id':             f"{parent_item_id}-{'s' if is_solved else 'a'}{answer['index']}",
+                        'relation_type':        "question_solved" if is_solved else "question_answered",
+                        'employee_id':          answer['owner_link'].split('~')[-1],
+                        'event_time_utc':       answer_date.isoformat(),
+                        'time_zone':            time_zone,
+                        'relation_properties':  extract_answer_relation_props(answer),
+                        'event_properties':     event_properties,
+                        'metrics':              {}
+                    })
+                        
+            except Exception as e:
+                logger.error(f"Error processing question {question.id}: {e}")
+                continue
         
-        logger.info(f"Question batch {i//batch_size + 1} produced {len(events_batch)} events")
+        logger.info(f"Chunk {chunk_count} produced {len(events_batch)} events")
+        # Yield the chunk immediately instead of accumulating
         yield events_batch
 
 
@@ -199,6 +129,17 @@ def extract_event_props(question) -> dict:
     event_properties = {}
     event_properties.update({key: value for value, key in property_mappings if value})
     return event_properties
+
+
+def extract_question_metrics(question) -> dict:
+    """Extract numeric metrics from question object"""
+    metrics = {}
+    
+    # Add any numeric properties if available
+    if hasattr(question, 'answer_count'):
+        metrics['answer_count'] = question.answer_count
+        
+    return metrics
 
 
 def extract_answer_relation_props(answer) -> dict:
