@@ -64,104 +64,100 @@ async def extract_data_streaming_enhanced(query: LaunchpadQuery, chunk_size: int
         logger.info(f"Processing chunk {chunk_count}: merge proposals {i+1} to {min(i+chunk_size, len(merge_proposals))} of {len(merge_proposals)}")
         
         for merge_proposal in batch:
-            try:
-                dates = [
-                    merge_proposal.date_created, 
-                    merge_proposal.date_review_requested,
-                    merge_proposal.date_reviewed, 
-                    merge_proposal.date_merged
-                ]
+            dates = [
+                merge_proposal.date_created, 
+                merge_proposal.date_review_requested,
+                merge_proposal.date_reviewed, 
+                merge_proposal.date_merged
+            ]
 
-                comments_response = requests.get(merge_proposal.all_comments_collection_link)
-                if comments_response.status_code == 200:
-                    dates.extend(datetime.strptime(comment['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z") for comment in comments_response.json()['entries'])
-                if not dates_in_range(dates, from_date, to_date): continue # skip if no dates are in range
+            comments_response = requests.get(merge_proposal.all_comments_collection_link)
+            if comments_response.status_code == 200:
+                dates.extend(datetime.strptime(comment['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z") for comment in comments_response.json()['entries'])
+            if not dates_in_range(dates, from_date, to_date): continue # skip if no dates are in range
 
-                # Parent item data
-                parent_item_id = f"mp-{merge_proposal.id}"
-                event_properties = extract_merge_proposal_event_props(merge_proposal)
-                metrics = extract_merge_proposal_metrics(merge_proposal)
+            # Parent item data
+            parent_item_id = f"mp-{merge_proposal.source_git_path}-{merge_proposal.self_link.split('/')[-1]}"  # mp-<project>/<branch>-<id>
+            event_properties = extract_merge_proposal_event_props(merge_proposal)
+            metrics = extract_merge_proposal_metrics(merge_proposal)
 
-                # Create merge_proposal_created event_relation
-                if date_in_range(merge_proposal.date_created, from_date, to_date):
-                    events_batch.append({
-                        'parent_item_id':       parent_item_id,
-                        'event_id':             f"{parent_item_id}-c",
-                        'relation_type':        "merge_proposal_created",
-                        'employee_id':          merge_proposal.registrant_link.split('~')[-1] if merge_proposal.registrant_link else query.member,
-                        'event_time_utc':       merge_proposal.date_created.isoformat(),
-                        'time_zone':            time_zone,
-                        'relation_properties':  {},
-                        'event_properties':     event_properties,
-                        'metrics':              metrics
-                    })
+            # Create merge_proposal_created event_relation
+            if date_in_range(merge_proposal.date_created, from_date, to_date):
+                events_batch.append({
+                    'parent_item_id':       parent_item_id,
+                    'event_id':             f"{parent_item_id}-c",
+                    'relation_type':        "merge_proposal_created",
+                    'employee_id':          merge_proposal.registrant_link.split('~')[-1] if merge_proposal.registrant_link else query.member,
+                    'event_time_utc':       merge_proposal.date_created.isoformat(),
+                    'time_zone':            time_zone,
+                    'relation_properties':  {},
+                    'event_properties':     event_properties,
+                    'metrics':              metrics
+                })
 
-                # Create review_requested event_relation
-                if date_in_range(merge_proposal.date_review_requested, from_date, to_date):
-                    events_batch.append({
-                        'parent_item_id':       parent_item_id,
-                        'event_id':             f"{parent_item_id}-rq",
-                        'relation_type':        "merge_proposal_review_requested",
-                        'employee_id':          query.member,
-                        'event_time_utc':       merge_proposal.date_review_requested.isoformat(),
-                        'time_zone':            time_zone,
-                        'relation_properties':  {},
-                        'event_properties':     event_properties,
-                        'metrics':              metrics
-                    })
+            # Create review_requested event_relation
+            if date_in_range(merge_proposal.date_review_requested, from_date, to_date):
+                events_batch.append({
+                    'parent_item_id':       parent_item_id,
+                    'event_id':             f"{parent_item_id}-rq",
+                    'relation_type':        "merge_proposal_review_requested",
+                    'employee_id':          query.member,
+                    'event_time_utc':       merge_proposal.date_review_requested.isoformat(),
+                    'time_zone':            time_zone,
+                    'relation_properties':  {},
+                    'event_properties':     event_properties,
+                    'metrics':              metrics
+                })
 
-                # Create reviewed event_relation
-                if date_in_range(merge_proposal.date_reviewed, from_date, to_date):
-                    events_batch.append({
-                        'parent_item_id':       parent_item_id,
-                        'event_id':             f"{parent_item_id}-r",
-                        'relation_type':        "merge_proposal_reviewed",
-                        'employee_id':          merge_proposal.reviewer_link.split('~')[-1] if merge_proposal.reviewer_link else query.member,
-                        'event_time_utc':       merge_proposal.date_reviewed.isoformat(),
-                        'time_zone':            time_zone,
-                        'relation_properties':  extract_merge_proposal_reviewed_relation_props(merge_proposal),
-                        'event_properties':     event_properties,
-                        'metrics':              metrics
-                    })
+            # Create reviewed event_relation
+            if date_in_range(merge_proposal.date_reviewed, from_date, to_date):
+                events_batch.append({
+                    'parent_item_id':       parent_item_id,
+                    'event_id':             f"{parent_item_id}-r",
+                    'relation_type':        "merge_proposal_reviewed",
+                    'employee_id':          merge_proposal.reviewer_link.split('~')[-1] if merge_proposal.reviewer_link else query.member,
+                    'event_time_utc':       merge_proposal.date_reviewed.isoformat(),
+                    'time_zone':            time_zone,
+                    'relation_properties':  extract_merge_proposal_reviewed_relation_props(merge_proposal),
+                    'event_properties':     event_properties,
+                    'metrics':              metrics
+                })
 
-                # Create merged event_relation
-                if date_in_range(merge_proposal.date_merged, from_date, to_date):
-                    events_batch.append({
-                        'parent_item_id':       parent_item_id,
-                        'event_id':             f"{parent_item_id}-m",
-                        'relation_type':        "merge_proposal_merged",
-                        'employee_id':          merge_proposal.merge_reporter_link.split('~')[-1] if merge_proposal.merge_reporter_link else query.member,
-                        'event_time_utc':       merge_proposal.date_merged.isoformat(),
-                        'time_zone':            time_zone,
-                        'relation_properties':  extract_merge_proposal_merged_relation_props(merge_proposal),
-                        'event_properties':     event_properties,
-                        'metrics':              metrics
-                    })
+            # Create merged event_relation
+            if date_in_range(merge_proposal.date_merged, from_date, to_date):
+                events_batch.append({
+                    'parent_item_id':       parent_item_id,
+                    'event_id':             f"{parent_item_id}-m",
+                    'relation_type':        "merge_proposal_merged",
+                    'employee_id':          merge_proposal.merge_reporter_link.split('~')[-1] if merge_proposal.merge_reporter_link else query.member,
+                    'event_time_utc':       merge_proposal.date_merged.isoformat(),
+                    'time_zone':            time_zone,
+                    'relation_properties':  extract_merge_proposal_merged_relation_props(merge_proposal),
+                    'event_properties':     event_properties,
+                    'metrics':              metrics
+                })
 
-                if comments_response.status_code != 200:
-                    continue # No comments were found, skip to next merge proposal
+            if comments_response.status_code != 200:
+                continue # No comments were found, skip to next merge proposal
 
-                for comment in comments_response.json()['entries']:
-                    date_created = datetime.strptime(comment['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z")
-                    if not date_in_range(date_created, from_date, to_date):
-                        continue # Skip comments outside the date range
+            for comment in comments_response.json()['entries']:
+                date_created = datetime.strptime(comment['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z")
+                if not date_in_range(date_created, from_date, to_date):
+                    continue # Skip comments outside the date range
 
-                    # Create comment event_relation
-                    events_batch.append({
-                        'parent_item_id':       parent_item_id,
-                        'event_id':             f"{parent_item_id}-v{comment['id']}" if comment['vote'] else f"{parent_item_id}-c{comment['id']}",
-                        'relation_type':        'merge_proposal_vote'                if comment['vote'] else 'merge_proposal_comment',
-                        'employee_id':          comment['author_link'].split('~')[-1],
-                        'event_time_utc':       date_created.isoformat(),
-                        'time_zone':            time_zone,
-                        'relation_properties':  extract_merge_proposal_comment_relation_props(comment),
-                        'event_properties':     event_properties,
-                        'metrics':              metrics
-                    })
-                        
-            except Exception as e:
-                logger.error(f"Error processing merge proposal {merge_proposal.id}: {e}")
-                continue
+                # Create comment event_relation
+                events_batch.append({
+                    'parent_item_id':       parent_item_id,
+                    'event_id':             f"{parent_item_id}-v{comment['id']}" if comment['vote'] else f"{parent_item_id}-c{comment['id']}",
+                    'relation_type':        'merge_proposal_vote'                if comment['vote'] else 'merge_proposal_comment',
+                    'employee_id':          comment['author_link'].split('~')[-1],
+                    'event_time_utc':       date_created.isoformat(),
+                    'time_zone':            time_zone,
+                    'relation_properties':  extract_merge_proposal_comment_relation_props(comment),
+                    'event_properties':     event_properties,
+                    'metrics':              metrics
+                })
+                    
         
         logger.info(f"Chunk {chunk_count} produced {len(events_batch)} events")
         # Yield the chunk immediately instead of accumulating

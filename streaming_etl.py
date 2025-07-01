@@ -42,7 +42,7 @@ async def run_streaming_worker():
     await worker.run()
 
 
-async def run_streaming_workflow_example():
+async def run_bugs_streaming_workflow_example():
     """Example of running a streaming ETL workflow."""
     # Connect to Temporal
     client = await Client.connect("localhost:7233")
@@ -173,8 +173,8 @@ async def main():
     
     if len(sys.argv) > 1 and sys.argv[1] == "worker":
         await run_streaming_worker()
-    elif len(sys.argv) > 1 and sys.argv[1] == "example":
-        await run_streaming_workflow_example()
+    elif len(sys.argv) > 1 and sys.argv[1] == "bugs":
+        await run_bugs_streaming_workflow_example()
     elif len(sys.argv) > 1 and sys.argv[1] == "questions":
         await run_questions_streaming_example()
     elif len(sys.argv) > 1 and sys.argv[1] == "merge-proposals":
@@ -182,7 +182,7 @@ async def main():
     else:
         print("Usage:")
         print("  python run_streaming_etl.py worker           # Run the streaming ETL worker")
-        print("  python run_streaming_etl.py example          # Run bugs streaming workflow example")
+        print("  python run_streaming_etl.py bugs             # Run bugs streaming workflow example")
         print("  python run_streaming_etl.py questions        # Run questions streaming workflow example")
         print("  python run_streaming_etl.py merge-proposals  # Run merge proposals streaming workflow example")
 
