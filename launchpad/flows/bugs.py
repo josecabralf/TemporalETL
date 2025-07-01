@@ -58,61 +58,52 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
 
     events = []
     logger.info("Found %d bug tasks for member %s", len(bug_tasks), query.member)
+    already_seen = set()  # To avoid duplicates
     for task in bug_tasks:
         bug = task.bug
-        parent_item_id = f"b-{bug.id}"
+        if bug.id in already_seen: 
+            continue
 
+        # Parent item data
+        parent_item_id = f"b-{bug.id}"
         event_properties = extract_bug_event_props(bug, task)
         metrics = extract_bug_metrics(bug)
 
-        # Look for bug activities linked to member
         logger.info("Processing bug %s with %d activities and %d messages", bug.id, len(bug.activity_collection), len(bug.messages))
         for idx, activity in enumerate(bug.activity_collection):
             if activity.person_link != person_link:
-                continue # If the member is not involved in the bug, we can skip it
-
-            event_id = f"{parent_item_id}-a{idx}"
-            event_time_utc = activity.datechanged.isoformat()
-            relation_type = 'bug_activity'
-
-            relation_properties = extract_activity_relation_props(activity)
+                continue
             
-            activity_info = {
+            events.append({
                 'parent_item_id':       parent_item_id,
-                'event_id':             event_id,
-                'relation_type':        relation_type,
+                'event_id':             f"{parent_item_id}-a{idx}",
+                'relation_type':        'bug_activity',
                 'employee_id':          query.member,
-                'event_time_utc':       event_time_utc,
+                'event_time_utc':       activity.datechanged.isoformat(),
                 'time_zone':            time_zone,
-                'relation_properties':  relation_properties,
+                'relation_properties':  extract_activity_relation_props(activity),
                 'event_properties':     event_properties,
                 'metrics':              metrics
-            }
-            events.append(activity_info)
+            })
 
         # Look for bug messages linked to member
         for idx, message in enumerate(bug.messages):
             if message.owner_link != person_link:
-                continue # If the member is not involved in the message, we can skip it
-
-            event_id = f"{parent_item_id}-m{idx}"
-            event_time_utc = message.date_created.isoformat()
-            relation_type = 'bug_message'
-
-            relation_properties = extract_message_relation_props(message)
-
-            message_info = {
+                continue
+            
+            events.append({
                 'parent_item_id':       parent_item_id,
-                'event_id':             event_id,
-                'relation_type':        relation_type,
+                'event_id':             f"{parent_item_id}-m{idx}",
+                'relation_type':        'bug_message',
                 'employee_id':          query.member,
-                'event_time_utc':       event_time_utc,
+                'event_time_utc':       message.date_created.isoformat(),
                 'time_zone':            time_zone,
-                'relation_properties':  relation_properties,
+                'relation_properties':  extract_message_relation_props(message),
                 'event_properties':     event_properties,
                 'metrics':              metrics
-            }
-            events.append(message_info)
+            })
+
+        already_seen.add(bug.id)
 
     return events
 

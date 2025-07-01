@@ -57,102 +57,79 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
     logger.info("Found %d merge proposals for member %s", len(merge_proposals), query.member)
     for merge_proposal in merge_proposals:
         logger.info("Processing merge proposal: %s", merge_proposal.self_link)
-        parent_item_id = f"mp-{merge_proposal.source_git_path}-{merge_proposal.self_link.split('/')[-1]}"  # mp-<project>/<branch>-<id>
-
         dates = [
             merge_proposal.date_created, 
             merge_proposal.date_review_requested,
             merge_proposal.date_reviewed, 
             merge_proposal.date_merged
         ]
-
+        
         comments_response = requests.get(merge_proposal.all_comments_collection_link)
         if comments_response.status_code == 200:
             dates.extend(datetime.strptime(comment['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z") for comment in comments_response.json()['entries'])
         if not dates_in_range(dates, from_date, to_date): continue # skip if no dates are in range
 
+        parent_item_id = f"mp-{merge_proposal.source_git_path}-{merge_proposal.self_link.split('/')[-1]}"  # mp-<project>/<branch>-<id>
         event_properties = extract_event_props(merge_proposal)
         metrics = {
             'comments_count': comments_response.json()['total_size'] if comments_response.status_code == 200 else 0,
         }
-        relation_properties = {}
 
         # Create merge_proposal_created event_relation
         if date_in_range(merge_proposal.date_created, from_date, to_date):
-            event_id = f"{parent_item_id}-c"
-            event_time_utc = merge_proposal.date_created.isoformat()
-            employee_id = merge_proposal.registrant_link.split('~')[-1] if merge_proposal.registrant_link else query.member
-            relation_type = "merge_proposal_created"
-            info = {
+            events.append({
                 'parent_item_id':       parent_item_id,
-                'event_id':             event_id,
-                'relation_type':        relation_type,
-                'employee_id':          employee_id,
-                'event_time_utc':       event_time_utc,
+                'event_id':             f"{parent_item_id}-c",
+                'relation_type':        "merge_proposal_created",
+                'employee_id':          merge_proposal.registrant_link.split('~')[-1] if merge_proposal.registrant_link else query.member,
+                'event_time_utc':       merge_proposal.date_created.isoformat(),
                 'time_zone':            time_zone,
-                'relation_properties':  relation_properties,
+                'relation_properties':  {},
                 'event_properties':     event_properties,
                 'metrics':              metrics
-            }
-            events.append(info)
+            })
 
         # Create review_requested event_relation
         if date_in_range(merge_proposal.date_review_requested, from_date, to_date):
-            event_id = f"{parent_item_id}-rq"
-            event_time_utc = merge_proposal.date_review_requested.isoformat()
-            relation_type = "merge_proposal_review_requested"
-            info = {
+            events.append({
                 'parent_item_id':       parent_item_id,
-                'event_id':             event_id,
-                'relation_type':        relation_type,
+                'event_id':             f"{parent_item_id}-rq",
+                'relation_type':        "merge_proposal_review_requested",
                 'employee_id':          query.member,
-                'event_time_utc':       event_time_utc,
+                'event_time_utc':       merge_proposal.date_review_requested.isoformat(),
                 'time_zone':            time_zone,
-                'relation_properties':  relation_properties,
+                'relation_properties':  {},
                 'event_properties':     event_properties,
                 'metrics':              metrics
-            }
-            events.append(info)
+            })
 
         # Create reviewed event_relation
         if date_in_range(merge_proposal.date_reviewed, from_date, to_date):
-            event_id = f"{parent_item_id}-r"
-            event_time_utc = merge_proposal.date_reviewed.isoformat()
-            relation_type = "merge_proposal_reviewed"
-            employee_id = merge_proposal.reviewer_link.split('~')[-1] if merge_proposal.reviewer_link else query.member
-            relation_properties = extract_merge_proposal_reviewed_relation_props(merge_proposal)
-            info = {
+            events.append({
                 'parent_item_id':       parent_item_id,
-                'event_id':             event_id,
-                'relation_type':        relation_type,
-                'employee_id':          employee_id,
-                'event_time_utc':       event_time_utc,
+                'event_id':             f"{parent_item_id}-r",
+                'relation_type':        "merge_proposal_reviewed",
+                'employee_id':          merge_proposal.reviewer_link.split('~')[-1] if merge_proposal.reviewer_link else query.member,
+                'event_time_utc':       merge_proposal.date_reviewed.isoformat(),
                 'time_zone':            time_zone,
-                'relation_properties':  relation_properties,
+                'relation_properties':  extract_merge_proposal_reviewed_relation_props(merge_proposal),
                 'event_properties':     event_properties,
                 'metrics':              metrics
-            }
-            events.append(info)
+            })
 
         # Create merged event_relation
         if date_in_range(merge_proposal.date_merged, from_date, to_date):
-            event_id = f"{parent_item_id}-m"
-            event_time_utc = merge_proposal.date_merged.isoformat()
-            relation_type = "merge_proposal_merged"
-            employee_id = merge_proposal.merge_reporter_link.split('~')[-1] if merge_proposal.merge_reporter_link else query.member
-            relation_properties = extract_merge_proposal_merged_relation_props(merge_proposal)
-            info = {
+            events.append({
                 'parent_item_id':       parent_item_id,
-                'event_id':             event_id,
-                'relation_type':        relation_type,
-                'employee_id':          employee_id,
-                'event_time_utc':       event_time_utc,
+                'event_id':             f"{parent_item_id}-m",
+                'relation_type':        "merge_proposal_merged",
+                'employee_id':          merge_proposal.merge_reporter_link.split('~')[-1] if merge_proposal.merge_reporter_link else query.member,
+                'event_time_utc':       merge_proposal.date_merged.isoformat(),
                 'time_zone':            time_zone,
-                'relation_properties':  relation_properties,
+                'relation_properties':  extract_merge_proposal_merged_relation_props(merge_proposal),
                 'event_properties':     event_properties,
                 'metrics':              metrics
-            }
-            events.append(info)
+            })
 
         if comments_response.status_code != 200:
             continue # No comments were found, skip to next merge proposal
@@ -162,25 +139,18 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
             if not date_in_range(date_created, from_date, to_date):
                 continue # Skip comments outside the date range
 
-            employee_id = comment['author_link'].split('~')[-1]
-            relation_properties = extract_merge_proposal_comment_relation_props(comment)
-            event_time_utc = date_created.isoformat()
-
             # Create comment event_relation
-            event_id = f"{parent_item_id}-v{comment['id']}" if comment['vote'] else f"{parent_item_id}-c{comment['id']}"
-            relation_type = 'merge_proposal_vote'           if comment['vote'] else 'merge_proposal_comment'
-            info = {
+            events.append({
                 'parent_item_id':       parent_item_id,
-                'event_id':             event_id,
-                'relation_type':        relation_type,
-                'employee_id':          employee_id,
-                'event_time_utc':       event_time_utc,
+                'event_id':             f"{parent_item_id}-v{comment['id']}" if comment['vote'] else f"{parent_item_id}-c{comment['id']}",
+                'relation_type':        'merge_proposal_vote'                if comment['vote'] else 'merge_proposal_comment',
+                'employee_id':          comment['author_link'].split('~')[-1],
+                'event_time_utc':       date_created.isoformat(),
                 'time_zone':            time_zone,
-                'relation_properties':  relation_properties,
+                'relation_properties':  extract_merge_proposal_comment_relation_props(comment),
                 'event_properties':     event_properties,
                 'metrics':              metrics
-            }
-            events.append(info)
+            })
 
     return events
 

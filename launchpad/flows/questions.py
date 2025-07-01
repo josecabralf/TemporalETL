@@ -44,8 +44,7 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
     events = []
     logger.info("Found %d questions for member %s", len(questions), query.member)
     for question in questions:
-        parent_item_id = f"q-{question.id}"
-
+        logger.info("Processing question: %s", question.self_link)
         dates = [
             question.date_created, 
             question.date_last_query, 
@@ -58,28 +57,24 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
             dates.extend(datetime.strptime(comment['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z") for comment in answers_response.json()['entries'])
         if not dates_in_range(dates, from_date, to_date): continue # Skip if no dates are in range
 
+        parent_item_id = f"q-{question.id}"
         event_properties = extract_event_props(question)
         metrics = {
             'answers_count': answers_response.json()['total_size'] if answers_response.status_code == 200 else 0,
         }
-        relation_properties = {}
 
         if date_in_range(question.date_created, from_date, to_date):
-            event_id = f"{parent_item_id}-c"
-            event_time_utc = question.date_created.isoformat()
-            relation_type = "question_created"
-            info = {
+            events.append({
                 'parent_item_id':       parent_item_id,
-                'event_id':             event_id,
-                'relation_type':        relation_type,
+                'event_id':             f"{parent_item_id}-c",
+                'relation_type':        "question_created",
                 'employee_id':          query.member,
-                'event_time_utc':       event_time_utc,
+                'event_time_utc':       question.date_created.isoformat(),
                 'time_zone':            time_zone,
-                'relation_properties':  relation_properties,
+                'relation_properties':  {},
                 'event_properties':     event_properties,
                 'metrics':              metrics
-            }
-            events.append(info)
+            })
 
         if answers_response.status_code != 200:
             continue # No answers were found, skip to next question
@@ -87,27 +82,21 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
         logger.info("Processing %d answers for question %s", answers_response.json()['total_size'], question.id)
         for answer in answers_response.json()['entries']:
             answer_date = datetime.strptime(answer['date_created'], "%Y-%m-%dT%H:%M:%S.%f%z")
-            if not date_in_range(answer_date, from_date, to_date): continue
+            if not date_in_range(answer_date, from_date, to_date): 
+                continue
 
             is_solved = answer.get('new_status') == 'Solved'
-            event_id = f"{parent_item_id}-{'s' if is_solved else 'a'}{answer['index']}"
-            relation_type = "question_solved" if is_solved else "question_answered"
-
-            event_time_utc = answer_date.isoformat()
-            employee_id = answer['owner_link'].split('~')[-1]
-            relation_properties = extract_answer_relation_props(answer)
-            info = {
+            events.append({
                 'parent_item_id':       parent_item_id,
-                'event_id':             event_id,
-                'relation_type':        relation_type,
-                'employee_id':          employee_id,
-                'event_time_utc':       event_time_utc,
+                'event_id':             f"{parent_item_id}-{'s' if is_solved else 'a'}{answer['index']}",
+                'relation_type':        "question_solved" if is_solved else "question_answered",
+                'employee_id':          answer['owner_link'].split('~')[-1],
+                'event_time_utc':       answer_date.isoformat(),
                 'time_zone':            time_zone,
-                'relation_properties':  relation_properties,
+                'relation_properties':  extract_answer_relation_props(answer),
                 'event_properties':     event_properties,
                 'metrics':              {}
-            }
-            events.append(info)
+            })
 
     return events
 
