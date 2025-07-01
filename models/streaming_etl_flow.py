@@ -94,14 +94,11 @@ class StreamingETLFlow:
             async with concurrent_chunks:
                 logger.info(f"Processing chunk {chunk_id} with {len(chunk_data)} items")
                 
-                # Transform the chunk
                 transformed = await workflow.execute_activity(
                     "transform_data_batch", 
                     args=(chunk_data, input.args["source_kind_id"], input.args["event_type"]),
                     start_to_close_timeout=timedelta(minutes=5)
                 )
-                
-                # Load the transformed data
                 inserted = await workflow.execute_activity(
                     "load_data_batch", 
                     args=(transformed, config.load_batch_size),
@@ -185,45 +182,29 @@ async def get_extraction_metadata(input: FlowInput) -> Dict[str, Any]:
 
 @activity.defn
 async def streaming_extract_data(input: FlowInput, chunk_size: int) -> List[Tuple[int, List[Dict[str, Any]]]]:
-    """
-    Extract data in chunks to reduce memory usage.
-    
-    Args:
-        input: FlowInput containing query parameters
-        chunk_size: Size of each chunk to return
-        
-    Returns:
-        List of tuples (chunk_id, chunk_data) where chunk_data is a list of extracted items
-    """
     monitor = MemoryMonitor()
     monitor.take_snapshot("extraction_start")
     
     query = QueryFactory.create(input.query_type, args=input.args)
     extract_method = ExtractMethodFactory.create(f'{query.source_kind_id}-{query.event_type}-streaming')
     
-    logger.info(f"Starting streaming extraction using method: {query.source_kind_id}.{query.event_type}.{extract_method.__name__}")
-    
-    # Get all data first (this could be optimized per extract method to be truly streaming)
-    all_data = await extract_method(query)
-    monitor.take_snapshot("extraction_complete")
-    
-    # Split data into chunks
     chunks = []
     chunk_id = 0
-    for i in range(0, len(all_data), chunk_size):
-        chunk = all_data[i:i + chunk_size]
-        logger.info(f"Prepared chunk {chunk_id} with {len(chunk)} items")
-        chunks.append((chunk_id, chunk))
-        chunk_id += 1
-        
-        # Monitor memory during chunking
-        if chunk_id % 10 == 0:
-            monitor.take_snapshot(f"chunking_progress_{chunk_id}")
-        
-    monitor.take_snapshot("chunking_complete")
-    monitor.log_final_stats()
     
-    logger.info(f"Split {len(all_data)} items into {len(chunks)} chunks")
+    # Use truly streaming extraction that yields chunks incrementally
+    logger.info("Using truly streaming extraction with optimal memory usage")
+    async for chunk_data in extract_method(query, chunk_size):
+        logger.info(f"Received streaming chunk {chunk_id} with {len(chunk_data)} items")
+        chunks.append((chunk_id, chunk_data))
+        chunk_id += 1
+
+        if chunk_id % 10 == 0:
+            monitor.take_snapshot(f"streaming_progress_{chunk_id}")
+
+        activity.heartbeat(chunk_id)
+        
+    monitor.take_snapshot("streaming_complete")
+
     return chunks
 
 

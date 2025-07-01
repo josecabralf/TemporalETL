@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Iterator
+from typing import List, Dict, Any, AsyncIterator
 import logging
 
 from launchpad.query import LaunchpadQuery
@@ -28,17 +28,9 @@ bug_task_status = [
 ]
 
 @extract_method(name="launchpad-bugs-streaming")
-async def extract_data_streaming(query: LaunchpadQuery) -> List[Dict[str, Any]]:
-    """
-    Streaming version of bug data extraction that processes data in batches.
-    This reduces memory usage for large datasets.
-    """
-    logger.info("Starting streaming extraction of Launchpad bug data for member: %s", query.member)
-    lp = Launchpad.login_anonymously(
-        consumer_name=query.application_name, 
-        service_root=query.service_root, 
-        version=query.version
-    )
+async def extract_data_streaming(query: LaunchpadQuery, chunk_size: int) -> AsyncIterator[List[Dict[str, Any]]]:
+    logger.info("Starting enhanced streaming extraction of Launchpad bug data for member: %s with chunk size: %d", query.member, chunk_size)
+    lp = Launchpad.login_anonymously(consumer_name=query.application_name, service_root=query.service_root, version=query.version)
     if not lp:
         raise ValueError("Failed to connect to Launchpad API")
     
@@ -46,74 +38,36 @@ async def extract_data_streaming(query: LaunchpadQuery) -> List[Dict[str, Any]]:
         person = lp.people[query.member] # type: ignore
     except KeyError:
         logger.warning(f"Member {query.member} not found")
-        return []
+        return
     except Exception as e:
         raise ValueError(f"Error fetching member {query.member}: {e}")
 
-    if not person: 
-        return []
+    if not person: return
     
     bug_tasks = person.searchTasks(
         created_since=query.data_date_start, 
         created_before=query.data_date_end, 
         status=bug_task_status
     )
-    
     if not bug_tasks: 
         logger.info("No bug tasks found for member %s in the specified date range", query.member)
-        return []
+        return
     
     person_link = person.self_link 
     time_zone = person.time_zone
 
-    logger.info("Found %d bug tasks for member %s", len(bug_tasks), query.member)
-    
-    # Process bugs in streaming batches
-    all_events = []
-    batch_count = 0
-    
-    for event_batch in process_bug_batch_streaming(
-        bug_tasks, person_link, time_zone, query.member, batch_size=50
-    ):
-        all_events.extend(event_batch)
-        batch_count += 1
-        
-        # Log progress for large datasets
-        if batch_count % 10 == 0:
-            logger.info(f"Processed {batch_count} batches, {len(all_events)} events so far")
-    
-    logger.info(f"Streaming extraction complete: {len(all_events)} total events from {batch_count} batches")
-    return all_events
-
-
-def process_bug_batch_streaming(bug_tasks: List, person_link: str, time_zone: str, 
-                               member: str, batch_size: int = 50) -> Iterator[List[Dict[str, Any]]]:
-    """
-    Process bugs in batches to reduce memory usage and enable streaming.
-    
-    Args:
-        bug_tasks: List of bug tasks from Launchpad
-        person_link: Person's Launchpad link
-        time_zone: Person's timezone
-        member: Member identifier
-        batch_size: Number of bugs to process per batch
-        
-    Yields:
-        Lists of event dictionaries for each batch
-    """
+    chunk_count = 0
     already_seen = set()  # To avoid duplicates
-    
-    for i in range(0, len(bug_tasks), batch_size):
-        batch = bug_tasks[i:i + batch_size]
+    logger.info("Found %d bug tasks for member %s, processing in chunks of %d", len(bug_tasks), query.member, chunk_size)
+    for i in range(0, len(bug_tasks), chunk_size):
+        logger.info(f"Processing chunk {chunk_count}: bugs {i+1} to {min(i+chunk_size, len(bug_tasks))} of {len(bug_tasks)}")
+        batch = bug_tasks[i:i + chunk_size]
         events_batch = []
-        
-        logger.info(f"Processing bug batch {i//batch_size + 1}: bugs {i+1} to {min(i+batch_size, len(bug_tasks))} of {len(bug_tasks)}")
+        chunk_count += 1
         
         for task in batch:
             bug = task.bug
-            if bug.id in already_seen: 
-                continue
-            already_seen.add(bug.id)
+            if bug.id in already_seen: continue
 
             # Parent item data
             parent_item_id = f"b-{bug.id}"
@@ -121,21 +75,14 @@ def process_bug_batch_streaming(bug_tasks: List, person_link: str, time_zone: st
             metrics = extract_bug_metrics(bug)
 
             # Process activities
-            activity_count = len(bug.activity_collection) if hasattr(bug, 'activity_collection') else 0
-            message_count = len(bug.messages) if hasattr(bug, 'messages') else 0
-            
-            logger.debug(f"Processing bug {bug.id} with {activity_count} activities and {message_count} messages")
-            
             if hasattr(bug, 'activity_collection'):
                 for idx, activity in enumerate(bug.activity_collection):
-                    if activity.person_link != person_link:
-                        continue
-                    
+                    if activity.person_link != person_link: continue
                     events_batch.append({
                         'parent_item_id':       parent_item_id,
                         'event_id':             f"{parent_item_id}-a{idx}",
                         'relation_type':        'bug_activity',
-                        'employee_id':          member,
+                        'employee_id':          query.member,
                         'event_time_utc':       activity.datechanged.isoformat(),
                         'time_zone':            time_zone,
                         'relation_properties':  extract_activity_relation_props(activity),
@@ -146,14 +93,12 @@ def process_bug_batch_streaming(bug_tasks: List, person_link: str, time_zone: st
             # Process messages
             if hasattr(bug, 'messages'):
                 for idx, message in enumerate(bug.messages):
-                    if message.owner_link != person_link:
-                        continue
-                    
+                    if message.owner_link != person_link: continue
                     events_batch.append({
                         'parent_item_id':       parent_item_id,
                         'event_id':             f"{parent_item_id}-m{idx}",
                         'relation_type':        'bug_message',
-                        'employee_id':          member,
+                        'employee_id':          query.member,
                         'event_time_utc':       message.date_created.isoformat(),
                         'time_zone':            time_zone,
                         'relation_properties':  extract_message_relation_props(message),
@@ -161,7 +106,10 @@ def process_bug_batch_streaming(bug_tasks: List, person_link: str, time_zone: st
                         'metrics':              metrics
                     })
         
-        logger.info(f"Batch {i//batch_size + 1} produced {len(events_batch)} events")
+            already_seen.add(bug.id)
+
+        logger.info(f"Chunk {chunk_count} produced {len(events_batch)} events")
+        # Yield the chunk immediately instead of accumulating
         yield events_batch
         
 
