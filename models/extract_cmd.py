@@ -113,7 +113,6 @@ class ExtractMethodFactory:
         ExtractMethodFactory._discover_and_import_modules()
         
         # Check if the method is registered via decorator
-        logger.info("Registered extract command types: %s", list(_extract_method_registry.keys()))
         if extract_cmd_type in _extract_method_registry:
             extract_cmd_function = _extract_method_registry[extract_cmd_type]
             return extract_cmd_function

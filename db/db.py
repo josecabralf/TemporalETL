@@ -69,8 +69,6 @@ class Database:
         Connection parameters can be configured via environment variables.
         Creates a threaded connection pool for better concurrency handling.
         """
-        logger.info("Initializing database connection pool")
-        
         # Get database connection parameters from environment
         db_host = os.getenv('DB_HOST', 'localhost')
         db_port = os.getenv('DB_PORT', '7000')
@@ -94,7 +92,6 @@ class Database:
                 self.connection_string,
                 cursor_factory=psycopg2.extras.RealDictCursor
             )
-            logger.info(f"Created PostgreSQL connection pool (min={min_conn}, max={max_conn})")
         except Exception as e:
             logger.error(f"Failed to create connection pool: {e}")
             raise
@@ -140,7 +137,6 @@ class Database:
                                 metrics JSONB
                             )
                         """).format(sql.Identifier(self.schema_name)))
-                    logger.info("Ensured %s table exists", self.schema_name)
                 conn.commit()
             except Exception as e:
                 conn.rollback()
@@ -168,7 +164,6 @@ class Database:
             try:
                 with self._pool_lock:
                     if self.pool.closed:
-                        logger.warning("Connection pool is closed, recreating...")
                         self._recreate_pool()
                     
                     connection = self.pool.getconn()
@@ -185,7 +180,6 @@ class Database:
                                 self.pool.putconn(connection)
                 else:
                     # Connection is unhealthy, discard it
-                    logger.warning("Discarding unhealthy connection")
                     with self._pool_lock:
                         if not self.pool.closed:
                             self.pool.putconn(connection, close=True)
@@ -226,7 +220,6 @@ class Database:
             
             # Check if connection is executing (shouldn't be for a fresh connection)
             if connection.isexecuting():
-                logger.warning("Connection is still executing a query")
                 return False
             
             # Try a simple query to verify connection works
@@ -237,7 +230,6 @@ class Database:
             return True
             
         except Exception as e:
-            logger.warning(f"Connection health check failed: {e}")
             return False
     
     def _recreate_pool(self) -> None:
@@ -259,7 +251,6 @@ class Database:
             self.connection_string,
             cursor_factory=psycopg2.extras.RealDictCursor
         )
-        logger.info("Recreated connection pool")
 
     def insert_events_batch(self, events: List[Event], max_retries: int = 3) -> int:
         """
@@ -353,11 +344,9 @@ class Database:
                 ]
                 
                 psycopg2.extras.execute_values(cursor, update_query, update_values)
-                logger.info(f"Updated event properties for {len(parent_updates)} parent items")
 
                 # Single commit for entire transaction
                 conn.commit()
-                logger.info(f"Successfully inserted {inserted_count} events")
                 
                 return inserted_count
 

@@ -164,7 +164,6 @@ class QueryFactory:
         QueryFactory._discover_and_import_modules()
         
         # Check if the query type is registered via decorator
-        logger.info("Registered query types: %s", list(_query_type_registry.keys()))
         if query_type in _query_type_registry:
             query_class = _query_type_registry[query_type]
             return query_class.from_dict(args)
