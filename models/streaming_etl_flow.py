@@ -1,0 +1,327 @@
+import logging
+import asyncio
+from datetime import timedelta
+from typing import Any, Dict, List, Tuple, Optional
+from dataclasses import dataclass
+
+from temporalio import activity, workflow
+
+from models.event import Event
+from models.extract_cmd import ExtractMethodFactory
+from models.flow_input import FlowInput
+from models.query import QueryFactory
+from models.memory_monitor import MemoryMonitor
+
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class StreamingConfig:
+    """Configuration for streaming ETL pipeline"""
+    extract_chunk_size: int = 100  # Number of items to extract per chunk
+    transform_batch_size: int = 500  # Number of events to transform per batch
+    load_batch_size: int = 1000  # Number of events to load per batch
+    max_concurrent_chunks: int = 3  # Maximum concurrent processing chunks
+    memory_threshold_mb: int = 500  # Memory threshold to trigger backpressure
+
+
+@workflow.defn
+class StreamingETLFlow:
+    """
+    Streaming Temporal workflow for processing data through an ETL pipeline.
+    Processes data in chunks to optimize memory usage and enable processing of large datasets.
+    """
+    queue_name: str = "streaming-etl-task-queue"
+
+    @staticmethod
+    def get_activities() -> List[Any]:
+        """Return list of activity functions for registration with Temporal worker."""
+        return [
+            streaming_extract_data,
+            transform_data_batch,
+            load_data_batch,
+            get_extraction_metadata
+        ]
+
+    @workflow.run
+    async def run(self, input: FlowInput, config: Optional[StreamingConfig] = None) -> Dict[str, Any]:
+        """
+        Execute the streaming ETL workflow pipeline.
+        
+        Args:
+            input: FlowInput containing workflow parameters
+            config: Optional streaming configuration, uses defaults if not provided
+                
+        Returns:
+            Dictionary containing workflow execution summary
+        """
+        if config is None:
+            config = StreamingConfig()
+            
+        summary: Dict[str, Any] = {
+            "workflow_id": workflow.info().workflow_id,
+            "items_processed": 0,
+            "items_inserted": 0,
+            "chunks_processed": 0,
+            "config": {
+                "extract_chunk_size": config.extract_chunk_size,
+                "transform_batch_size": config.transform_batch_size,
+                "load_batch_size": config.load_batch_size
+            }
+        }
+
+        # Get metadata about the extraction to plan processing
+        metadata = await workflow.execute_activity(
+            "get_extraction_metadata", input,
+            start_to_close_timeout=timedelta(minutes=2)
+        )
+        summary.update(metadata)
+        logger.info(f"Starting streaming extraction with estimated {metadata.get('estimated_items', 'unknown')} items")
+
+        # Track processing state
+        total_processed = 0
+        total_inserted = 0
+        chunk_count = 0
+        
+        # Semaphore to limit concurrent chunk processing
+        concurrent_chunks = asyncio.Semaphore(config.max_concurrent_chunks)
+
+        async def process_chunk(chunk_id: int, chunk_data: List[Dict[str, Any]]) -> Tuple[int, int]:
+            """Process a single chunk of data through transform and load stages"""
+            async with concurrent_chunks:
+                logger.info(f"Processing chunk {chunk_id} with {len(chunk_data)} items")
+                
+                # Transform the chunk
+                transformed = await workflow.execute_activity(
+                    "transform_data_batch", 
+                    args=(chunk_data, input.args["source_kind_id"], input.args["event_type"]),
+                    start_to_close_timeout=timedelta(minutes=5)
+                )
+                
+                # Load the transformed data
+                inserted = await workflow.execute_activity(
+                    "load_data_batch", 
+                    args=(transformed, config.load_batch_size),
+                    start_to_close_timeout=timedelta(minutes=10)
+                )
+                
+                logger.info(f"Chunk {chunk_id}: transformed {len(transformed)} events, inserted {inserted} records")
+                return len(transformed), inserted
+
+        # Process data in streaming fashion
+        chunk_tasks = []
+        
+        # Start streaming extraction - get all chunks first, then process
+        chunks = await workflow.execute_activity(
+            "streaming_extract_data", 
+            args=(input, config.extract_chunk_size),
+            start_to_close_timeout=timedelta(minutes=30)
+        )
+        
+        # Process each chunk
+        for chunk_id, chunk_data in chunks:
+            chunk_count += 1
+            
+            # Process chunk asynchronously
+            task = asyncio.create_task(process_chunk(chunk_id, chunk_data))
+            chunk_tasks.append(task)
+            
+            # Process completed chunks to avoid unbounded memory growth
+            if len(chunk_tasks) >= config.max_concurrent_chunks:
+                # Wait for at least one chunk to complete
+                done, pending = await asyncio.wait(chunk_tasks, return_when=asyncio.FIRST_COMPLETED)
+                
+                for completed_task in done:
+                    processed, inserted = await completed_task
+                    total_processed += processed
+                    total_inserted += inserted
+                
+                chunk_tasks = list(pending)
+
+        # Wait for remaining chunks to complete
+        if chunk_tasks:
+            results = await asyncio.gather(*chunk_tasks)
+            for processed, inserted in results:
+                total_processed += processed
+                total_inserted += inserted
+
+        summary.update({
+            "items_processed": total_processed,
+            "items_inserted": total_inserted,
+            "chunks_processed": chunk_count
+        })
+        
+        logger.info(f"Streaming ETL completed: {total_processed} items processed, {total_inserted} items inserted across {chunk_count} chunks")
+        return summary
+
+
+@activity.defn
+async def get_extraction_metadata(input: FlowInput) -> Dict[str, Any]:
+    """
+    Get metadata about the extraction to help plan streaming processing.
+    
+    Args:
+        input: FlowInput containing query parameters
+        
+    Returns:
+        Dictionary with extraction metadata
+    """
+    query = QueryFactory.create(input.query_type, args=input.args)
+    
+    # This is a lightweight operation to get size estimates
+    # Implementation depends on the specific query type
+    metadata = {
+        "query_type": input.query_type,
+        "source_kind_id": input.args.get("source_kind_id"),
+        "event_type": input.args.get("event_type"),
+        "estimated_items": "unknown"  # Could be enhanced per query type
+    }
+    
+    return metadata
+
+
+@activity.defn
+async def streaming_extract_data(input: FlowInput, chunk_size: int) -> List[Tuple[int, List[Dict[str, Any]]]]:
+    """
+    Extract data in chunks to reduce memory usage.
+    
+    Args:
+        input: FlowInput containing query parameters
+        chunk_size: Size of each chunk to return
+        
+    Returns:
+        List of tuples (chunk_id, chunk_data) where chunk_data is a list of extracted items
+    """
+    monitor = MemoryMonitor()
+    monitor.take_snapshot("extraction_start")
+    
+    query = QueryFactory.create(input.query_type, args=input.args)
+    extract_method = ExtractMethodFactory.create(f'{query.source_kind_id}-{query.event_type}-streaming')
+    
+    logger.info(f"Starting streaming extraction using method: {query.source_kind_id}.{query.event_type}.{extract_method.__name__}")
+    
+    # Get all data first (this could be optimized per extract method to be truly streaming)
+    all_data = await extract_method(query)
+    monitor.take_snapshot("extraction_complete")
+    
+    # Split data into chunks
+    chunks = []
+    chunk_id = 0
+    for i in range(0, len(all_data), chunk_size):
+        chunk = all_data[i:i + chunk_size]
+        logger.info(f"Prepared chunk {chunk_id} with {len(chunk)} items")
+        chunks.append((chunk_id, chunk))
+        chunk_id += 1
+        
+        # Monitor memory during chunking
+        if chunk_id % 10 == 0:
+            monitor.take_snapshot(f"chunking_progress_{chunk_id}")
+        
+    monitor.take_snapshot("chunking_complete")
+    monitor.log_final_stats()
+    
+    logger.info(f"Split {len(all_data)} items into {len(chunks)} chunks")
+    return chunks
+
+
+@activity.defn
+async def transform_data_batch(events: List[dict], source_kind_id: str, event_type: str) -> List[Event]:
+    """
+    Transform a batch of events into Event objects.
+    
+    Args:
+        events: List of raw event dictionaries
+        source_kind_id: Source identifier
+        event_type: Type of event
+        
+    Returns:
+        List of transformed Event objects
+    """
+    logger.info(f"Transforming batch of {len(events)} events")
+    
+    transformed_events = []
+    for e in events:
+        try:
+            event = Event(
+                id=                     None,  # ID will be assigned by the database
+                source_kind_id=         source_kind_id,
+                parent_item_id=         e['parent_item_id'],
+                event_id=               e['event_id'],
+
+                event_type=             event_type,
+                relation_type=          e['relation_type'],
+
+                employee_id=            e['employee_id'],
+
+                event_time_utc=         e['event_time_utc'],
+                week=                   None,  # Calculated in __post_init__
+                timezone=               e.get('time_zone', 'UTC'),
+                event_time=             None,  # Calculated in __post_init__
+
+                event_properties=       e.get('event_properties', {}),
+                relation_properties=    e.get('relation_properties', {}),
+                metrics=                e.get('metrics', {})
+            )
+            transformed_events.append(event)
+        except Exception as ex:
+            logger.error(f"Error transforming event {e.get('event_id', 'unknown')}: {ex}")
+            # Continue processing other events instead of failing the entire batch
+            continue
+    
+    logger.info(f"Successfully transformed {len(transformed_events)} out of {len(events)} events")
+    return transformed_events
+
+
+@activity.defn
+async def load_data_batch(events: List[Event], batch_size: int) -> int:
+    """
+    Load a batch of events into the database with configurable sub-batching.
+    
+    Args:
+        events: List of Event objects to insert
+        batch_size: Size of sub-batches for database insertion
+        
+    Returns:
+        Number of events successfully inserted
+    """
+    from db.db import Database
+    
+    if not events:
+        return 0
+    
+    monitor = MemoryMonitor()
+    monitor.take_snapshot("load_start")
+        
+    db = Database()
+    total_inserted = 0
+    
+    logger.info(f"Loading {len(events)} events in sub-batches of {batch_size}")
+    
+    # Process in sub-batches to manage database load
+    for i in range(0, len(events), batch_size):
+        sub_batch = events[i:i + batch_size]
+        try:
+            inserted = db.insert_events_batch(sub_batch)
+            total_inserted += inserted
+            logger.info(f"Inserted sub-batch {i//batch_size + 1}: {inserted} events")
+            
+            # Monitor memory usage during loading
+            if (i // batch_size + 1) % 5 == 0:
+                monitor.take_snapshot(f"load_progress_batch_{i//batch_size + 1}")
+            
+            # Add heartbeat for long-running loads
+            activity.heartbeat(f"Loaded {total_inserted}/{len(events)} events")
+            
+        except Exception as ex:
+            logger.error(f"Error inserting sub-batch {i//batch_size + 1}: {ex}")
+            # Continue with remaining batches
+            continue
+    
+    monitor.take_snapshot("load_complete")
+    monitor.log_final_stats()
+    
+    logger.info(f"Successfully loaded {total_inserted} out of {len(events)} events")
+    return total_inserted
