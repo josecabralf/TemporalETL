@@ -169,14 +169,3 @@ class QueryFactory:
             return query_class.from_dict(args)
         
         raise ValueError(f"Query type '{query_type}' not found in registry")
-
-    @staticmethod
-    def get_registered_types() -> list:
-        """
-        Get all registered query types from decorator registry.
-        
-        Returns:
-            List of all available query types
-        """
-        QueryFactory._discover_and_import_modules()
-        return list(_query_type_registry.keys())
