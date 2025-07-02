@@ -79,7 +79,6 @@ class StreamingETLFlow:
             start_to_close_timeout=timedelta(minutes=2)
         )
         summary.update(metadata)
-        logger.info(f"Starting streaming extraction with estimated {metadata.get('estimated_items', 'unknown')} items")
 
         # Track processing state
         total_processed = 0
@@ -210,17 +209,6 @@ async def streaming_extract_data(input: FlowInput, chunk_size: int) -> List[Tupl
 
 @activity.defn
 async def transform_data_batch(events: List[dict], source_kind_id: str, event_type: str) -> List[Event]:
-    """
-    Transform a batch of events into Event objects.
-    
-    Args:
-        events: List of raw event dictionaries
-        source_kind_id: Source identifier
-        event_type: Type of event
-        
-    Returns:
-        List of transformed Event objects
-    """
     logger.info(f"Transforming batch of {len(events)} events")
     
     transformed_events = []
@@ -258,16 +246,6 @@ async def transform_data_batch(events: List[dict], source_kind_id: str, event_ty
 
 @activity.defn
 async def load_data_batch(events: List[Event], batch_size: int) -> int:
-    """
-    Load a batch of events into the database with configurable sub-batching.
-    
-    Args:
-        events: List of Event objects to insert
-        batch_size: Size of sub-batches for database insertion
-        
-    Returns:
-        Number of events successfully inserted
-    """
     from db.db import Database
     
     if not events:

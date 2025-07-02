@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import Any, AsyncIterator, Dict, List
 
 from launchpad.query import LaunchpadQuery
 from models.extract_cmd import extract_method
@@ -36,45 +36,88 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
     if not lp:
         raise ValueError("Failed to connect to Launchpad API")
     
-    try:
-        person = lp.people[query.member] # type: ignore
-    except KeyError:
-        return []
-    except Exception as e:
-        raise ValueError(f"Error fetching member %s: %s", query.member, e)
+    try:                    person = lp.people[query.member] # type: ignore
+    except KeyError:        return [] # Member does not exist, return empty list
+    except Exception as e:  raise ValueError(f"Error fetching member %s: %s", query.member, e) # Handle other exceptions
 
     if not person: return []
     
     bug_tasks = person.searchTasks(
-        created_since = query.data_date_start, created_before = query.data_date_end, 
-        status = bug_task_status
-    )
-    if not bug_tasks: 
-        logger.info("No bug tasks found for member %s in the specified date range", query.member)
-        return []
+        created_since = query.data_date_start, 
+        created_before = query.data_date_end, 
+        status = bug_task_status)
+    if not bug_tasks: return []
     
     person_link = person.self_link 
     time_zone = person.time_zone
 
     events = []
-    logger.info("Found %d bug tasks for member %s", len(bug_tasks), query.member)
     already_seen = set()  # To avoid duplicates
+    logger.info("Found %d bug tasks for member %s", len(bug_tasks), query.member)
     for task in bug_tasks:
-        bug = task.bug
-        if bug.id in already_seen: 
-            continue
+        if task.bug.id in already_seen: continue
+        events.extend(extract_bug_events(query, task, person_link, time_zone))
+        already_seen.add(task.bug.id)
 
-        # Parent item data
-        parent_item_id = f"b-{bug.id}"
-        event_properties = extract_bug_event_props(bug, task)
-        metrics = extract_bug_metrics(bug)
+    return events
 
-        logger.info("Processing bug %s with %d activities and %d messages", bug.id, len(bug.activity_collection), len(bug.messages))
+
+@extract_method(name="launchpad-bugs-streaming")
+async def extract_data_streaming(query: LaunchpadQuery, chunk_size: int) -> AsyncIterator[List[Dict[str, Any]]]:
+    logger.info("Streaming extraction of Launchpad bug data for member: %s with chunk size: %d", query.member, chunk_size)
+    lp = Launchpad.login_anonymously(consumer_name=query.application_name, service_root=query.service_root, version=query.version)
+    if not lp: raise ValueError("Failed to connect to Launchpad API")
+    
+    try:                    person = lp.people[query.member] # type: ignore
+    except KeyError:        return # Member does not exist, return empty iterator
+    except Exception as e:  raise ValueError(f"Error fetching member {query.member}: {e}") # Handle other exceptions
+
+    if not person: return
+    
+    bug_tasks = person.searchTasks(
+        created_since=query.data_date_start, 
+        created_before=query.data_date_end, 
+        status=bug_task_status)
+    if not bug_tasks: return
+    
+    person_link = person.self_link 
+    time_zone = person.time_zone
+
+    chunk_count = 0
+    already_seen = set()  # To avoid duplicates
+    logger.info("Found %d bug tasks for member %s, processing in chunks of %d", len(bug_tasks), query.member, chunk_size)
+    for i in range(0, len(bug_tasks), chunk_size):
+        logger.info(f"Processing chunk {chunk_count}: bugs {i+1} to {min(i+chunk_size, len(bug_tasks))} of {len(bug_tasks)}")
+        batch = bug_tasks[i:i + chunk_size]
+        events_batch: List[Dict[str, Any]] = []
+        chunk_count += 1
+        
+        for task in batch:
+            if task.bug.id in already_seen: continue
+            events_batch.extend(extract_bug_events(query, task, person_link, time_zone))
+            already_seen.add(task.bug.id)
+
+        logger.info(f"Chunk {chunk_count} produced {len(events_batch)} events")
+        yield events_batch
+
+
+"""
+Helper functions to extract properties from bug, activity, and message objects
+"""
+def extract_bug_events(query: LaunchpadQuery, task, person_link: str, time_zone: str) -> List[Dict[str, Any]]:
+    events_batch = []  # List to hold all events for this batch
+
+    # Parent item data
+    bug = task.bug
+    parent_item_id = f"b-{bug.id}"
+    event_properties = extract_bug_event_props(bug, task)
+    metrics = extract_bug_metrics(bug)
+
+    # Process activities
+    if hasattr(bug, 'activity_collection'):
         for idx, activity in enumerate(bug.activity_collection):
-            if activity.person_link != person_link:
-                continue
-            
-            events.append({
+            if activity.person_link != person_link: continue
+            events_batch.append({
                 'parent_item_id':       parent_item_id,
                 'event_id':             f"{parent_item_id}-a{idx}",
                 'relation_type':        'bug_activity',
@@ -86,12 +129,11 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
                 'metrics':              metrics
             })
 
-        # Look for bug messages linked to member
+    # Process messages
+    if hasattr(bug, 'messages'):
         for idx, message in enumerate(bug.messages):
-            if message.owner_link != person_link:
-                continue
-            
-            events.append({
+            if message.owner_link != person_link: continue
+            events_batch.append({
                 'parent_item_id':       parent_item_id,
                 'event_id':             f"{parent_item_id}-m{idx}",
                 'relation_type':        'bug_message',
@@ -103,76 +145,51 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
                 'metrics':              metrics
             })
 
-        already_seen.add(bug.id)
-
-    return events
+    return events_batch
 
 
-"""
-Helper functions to extract properties from bug, activity, and message objects
-"""
 def extract_bug_event_props(bug, task) -> dict:
-    # Filter out None/empty values and create dictionary
-    property_mappings = [
-        (bug.title, 'title'),
-        (bug.description, 'description'),
-        (bug.web_link, 'link'),
-        (bug.information_type, 'information_type'),
-        (bug.private, 'private'),
-        (bug.security_related, 'security_related'),
-        (bug.name, 'name'),
-        (bug.tags if len(bug.tags) > 0 else None, 'tags'),
+    return {
+        'title': bug.title if hasattr(bug, 'title') else None,
+        'description': bug.description if hasattr(bug, 'description') else None,
+        'link': bug.web_link if hasattr(bug, 'web_link') else None,
+        'information_type': bug.information_type if hasattr(bug, 'information_type') else None,
+        'private': bug.private if hasattr(bug, 'private') else None,
+        'security_related': bug.security_related if hasattr(bug, 'security_related') else None,
+        'name': bug.name if hasattr(bug, 'name') else None,
+        'tags': bug.tags if hasattr(bug, 'tags') and len(bug.tags) > 0 else None,
 
-        (task.status, 'status'),
-        (task.importance, 'importance'),
-        (task.is_complete, 'is_complete'),
-        (task.owner_link, 'owner_link'),
-    ]
-    event_properties = {}
-    event_properties.update({key: value for value, key in property_mappings if value})
-
-    return event_properties
+        'status': task.status if hasattr(task, 'status') else None,
+        'importance': task.importance if hasattr(task, 'importance') else None,
+        'is_complete': task.is_complete if hasattr(task, 'is_complete') else None,
+        'owner_link': task.owner_link if hasattr(task, 'owner_link') else None,
+    }
 
 
 def extract_bug_metrics(bug) -> dict:
-    # Filter out None/empty values and create dictionary
-    property_mappings = [
-        (bug.heat, 'heat'),
-        (bug.message_count, 'message_count'),
-        (bug.number_of_duplicates, 'number_of_duplicates'),
-        (bug.users_affected_count, 'users_affected_count'),
-        (bug.users_affected_count_with_dupes, 'users_affected_count_with_duplicates'),
-        (bug.users_unaffected_count, 'users_unaffected_count'),
-    ]
-    metrics = {}
-    metrics.update({key: value for value, key in property_mappings if value})
-
-    return metrics
+    return {
+        'heat': bug.heat if hasattr(bug, 'heat') else None,
+        'message_count': bug.message_count if hasattr(bug, 'message_count') else None,
+        'number_of_duplicates': bug.number_of_duplicates if hasattr(bug, 'number_of_duplicates') else None,
+        'users_affected_count': bug.users_affected_count if hasattr(bug, 'users_affected_count') else None,
+        'users_affected_count_with_dupes': bug.users_affected_count_with_dupes if hasattr(bug, 'users_affected_count_with_dupes') else None,
+        'users_unaffected_count': bug.users_unaffected_count if hasattr(bug, 'users_unaffected_count') else None,
+    }
 
 
 def extract_activity_relation_props(activity) -> dict:
-    # Filter out None/empty values and create dictionary
-    property_mappings = [
-        (activity.whatchanged, 'whatchanged'),
-        (activity.oldvalue, 'old_value'),
-        (activity.newvalue, 'new_value'),
-        (activity.message, 'message'),
-    ]
-    relation_properties = {}
-    relation_properties.update({key: value for value, key in property_mappings if value})
-
-    return relation_properties
+    return {
+        'watch_changed': activity.whatchanged if hasattr(activity, 'whatchanged') else None,
+        'old_value': activity.oldvalue if hasattr(activity, 'oldvalue') else None,
+        'new_value': activity.newvalue if hasattr(activity, 'newvalue') else None,
+        'message': activity.message if hasattr(activity, 'message') else None,
+    }
 
 
 def extract_message_relation_props(message) -> dict:
-    # Filter out None/empty values and create dictionary
-    property_mappings = [
-        (message.web_link, 'link'),
-        (message.owner_link, 'owner'),
-        (message.content, 'content'),
-        (message.subject, 'subject'),
-    ]
-    relation_properties = {}
-    relation_properties.update({key: value for value, key in property_mappings if value})
-
-    return relation_properties
+    return {
+        'link': message.web_link if hasattr(message, 'web_link') else None,
+        'owner': message.owner_link if hasattr(message, 'owner_link') else None,
+        'content': message.content if hasattr(message, 'content') else None,
+        'subject': message.subject if hasattr(message, 'subject') else None,
+    }
