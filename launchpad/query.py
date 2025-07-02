@@ -83,6 +83,9 @@ class LaunchpadQuery(Query):
             Dictionary containing key query information for summary reporting
         """
         return {
+            "query_type": self.__class__.__name__,
+            "source_kind_id": self.source_kind_id,
+            "event_type": self.event_type,
             "launchpad": f"{self.application_name}@{self.service_root}:{self.version}",
             "member": self.member,
             "data_date_start": self.data_date_start,

@@ -18,8 +18,10 @@ class FlowInput:
                               to the query type
     """
     query_type: str
+    extract_strategy: str
     args: Dict[str, Any]
 
-    def __init__(self, query_type: str, args: Dict[str, Any]) -> None:
+    def __init__(self, query_type: str, extract_strategy:str, args: Dict[str, Any]) -> None:
         self.query_type = query_type
+        self.extract_strategy = extract_strategy
         self.args = args

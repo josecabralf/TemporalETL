@@ -34,6 +34,7 @@ async def main():
         
         input = FlowInput(
             query_type=config["source_kind_id"],
+            extract_strategy=EXTRACT_STRATEGY,
             args=config
         )
         
@@ -71,6 +72,7 @@ if __name__ == "__main__":
 
     EVENT_TYPE = 'bugs'
     SOURCE_KIND_ID = 'launchpad'
+    EXTRACT_STRATEGY = 'launchpad-bugs'
 
     print(f"Starting workflows with parameters:\n"
           f"  Application ID: {LP_APP_ID}\n"

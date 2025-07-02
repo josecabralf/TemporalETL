@@ -38,6 +38,12 @@ EVENT_TYPES = [
     'questions',
 ]
 
+EVENTS_AND_STRATS = {
+    'bugs': f"launchpad-bugs",
+    'merge_proposals': f"launchpad-merge_proposals",
+    'questions': f"launchpad-questions",
+}
+
 
 async def queue_workflows():
     launchpad = Launchpad.login_anonymously(
@@ -59,9 +65,10 @@ async def queue_workflows():
     for member in team:
         member_workflows = []
         
-        for event_type in EVENT_TYPES:
+        for event_type, strategy in EVENTS_AND_STRATS.items():
             input = FlowInput(
                 query_type=SOURCE_KIND_ID,
+                extract_strategy=strategy,
                 args={
                     "application_name": LP_APP_ID,
                     "service_root": LP_WEB_ROOT,

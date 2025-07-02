@@ -59,10 +59,11 @@ async def run_bugs_streaming_workflow_example():
     # Create workflow input
     flow_input = FlowInput(
         query_type="launchpad",
+        extract_strategy="launchpad-bugs-streaming",
         args={
             "source_kind_id": "launchpad",
-            "event_type": "bugs",  # Use streaming version
-            "member": "ines-almeida",  # Replace with actual member
+            "event_type": "bugs",
+            "member": MEMBER,
             "data_date_start": "2023-09-01",
             "data_date_end": "2025-03-04",
             "application_name": "temporal-etl-streaming",
@@ -94,7 +95,7 @@ async def run_questions_streaming_example():
     client = await Client.connect("localhost:7233")
     
     config = StreamingConfig(
-        extract_chunk_size=50,       # Smaller chunks for questions (they have more nested data)
+        extract_chunk_size=100,       # Smaller chunks for questions (they have more nested data)
         transform_batch_size=300,
         load_batch_size=800,
         max_concurrent_chunks=2,     # Conservative concurrency for questions
@@ -103,11 +104,12 @@ async def run_questions_streaming_example():
     
     flow_input = FlowInput(
         query_type="launchpad",
+        extract_strategy="launchpad-questions-streaming",
         args={
             "source_kind_id": "launchpad",
             "event_type": "questions",
-            "member": "ines-almeida",
-            "data_date_start": "2024-01-01",
+            "member": MEMBER,
+            "data_date_start": "2023-01-01",
             "data_date_end": "2024-12-31",
             "application_name": "temporal-etl-questions-streaming",
             "service_root": "production",
@@ -133,7 +135,7 @@ async def run_merge_proposals_streaming_example():
     client = await Client.connect("localhost:7233")
     
     config = StreamingConfig(
-        extract_chunk_size=30,       # Even smaller chunks for merge proposals (complex nested data)
+        extract_chunk_size=100,       # Even smaller chunks for merge proposals (complex nested data)
         transform_batch_size=200,
         load_batch_size=600,
         max_concurrent_chunks=2,
@@ -142,10 +144,11 @@ async def run_merge_proposals_streaming_example():
     
     flow_input = FlowInput(
         query_type="launchpad",
+        extract_strategy="launchpad-merge_proposals-streaming",
         args={
             "source_kind_id": "launchpad",
             "event_type": "merge_proposals",
-            "member": "ines-almeida",
+            "member": MEMBER,
             "data_date_start": "2024-01-01",
             "data_date_end": "2024-12-31",
             "application_name": "temporal-etl-mp-streaming",
@@ -188,4 +191,11 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    MEMBER = "member_1"
+
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Worker stopped by user.")
+    except Exception as e:
+        print(f"An error occurred: {e}")

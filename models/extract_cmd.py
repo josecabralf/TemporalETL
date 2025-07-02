@@ -31,7 +31,7 @@ def extract_method(name: str):
     return decorator
 
 
-class ExtractMethodFactory:
+class ExtractStrategy:
     _modules_imported = False
 
     @staticmethod
@@ -63,14 +63,14 @@ class ExtractMethodFactory:
     @staticmethod
     def _discover_and_import_modules():
         """Auto-discover and import all flow modules to trigger decorator registration."""
-        if ExtractMethodFactory._modules_imported:
+        if ExtractStrategy._modules_imported:
             return
             
         # Get project root directory
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         
         # Dynamically discover flow directories
-        flow_directories = ExtractMethodFactory._discover_flow_directories()
+        flow_directories = ExtractStrategy._discover_flow_directories()
         
         for flow_dir in flow_directories:
             flow_path = os.path.join(project_root, flow_dir)
@@ -93,7 +93,7 @@ class ExtractMethodFactory:
             except Exception as e:
                 logger.error("Error scanning flow directory %s: %s", flow_path, e)
         
-        ExtractMethodFactory._modules_imported = True
+        ExtractStrategy._modules_imported = True
 
     @staticmethod
     def create(extract_cmd_type: str) -> Callable:
@@ -110,7 +110,7 @@ class ExtractMethodFactory:
             ValueError: If the extract command type is not recognized
         """
         # Auto-discover and import all flow modules
-        ExtractMethodFactory._discover_and_import_modules()
+        ExtractStrategy._discover_and_import_modules()
         
         # Check if the method is registered via decorator
         if extract_cmd_type in _extract_method_registry:

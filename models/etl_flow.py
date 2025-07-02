@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Tuple
 from temporalio import activity, workflow
 
 from models.event import Event
-from models.extract_cmd import ExtractMethodFactory
+from models.extract_cmd import ExtractStrategy
 from models.flow_input import FlowInput
 from models.query import QueryFactory
 
@@ -43,7 +43,7 @@ class ETLFlow:
             def get_activities() -> List[Any]:
                 return [extract_data, transform_data, load_data]
         """
-        return [extract_data, transform_data, load_data]
+        return [get_etl_metadata, extract_data, transform_data, load_data]
 
     @workflow.run
     async def run(self, input: FlowInput) -> Dict[str, Any]:
@@ -62,13 +62,24 @@ class ETLFlow:
             ActivityError: If any activity fails after exhausting retries
             ValueError: If input parameters are invalid or missing
         """
-        summary: Dict[str, Any] = { "workflow_id": workflow.info().workflow_id }
+        summary: Dict[str, Any] = {
+            "workflow_id": workflow.info().workflow_id,
+            "items_extracted": 0,
+            "items_processed": 0,
+            "items_inserted": 0,
+        }
 
-        extracted_summary, extracted = await workflow.execute_activity(
+        metadata = await workflow.execute_activity(
+            "get_etl_metadata", input,
+            start_to_close_timeout=timedelta(minutes=1),
+        )
+        summary.update(metadata)
+
+        extracted = await workflow.execute_activity(
             "extract_data", input, # pass in input so that query can be reconstructed
             start_to_close_timeout=timedelta(minutes=10),
         )
-        summary.update(extracted_summary)
+        summary["items_extracted"] = len(extracted)
         logger.info(f"Extracted {len(extracted)} items from Launchpad.")
 
         transformed = await workflow.execute_activity(
@@ -89,11 +100,25 @@ class ETLFlow:
 
 
 @activity.defn
-async def extract_data(input: FlowInput) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+async def get_etl_metadata(input: FlowInput) -> Dict[str, Any]:
+    """
+    Get metadata about the extraction to help inform the processing results.
+    
+    Args:
+        input: FlowInput containing query parameters
+        
+    Returns:
+        Dictionary with extraction metadata
+    """
+    return QueryFactory.create(input.query_type, args=input.args).to_summary_base()
+
+
+@activity.defn
+async def extract_data(input: FlowInput) -> List[Dict[str, Any]]:
     query = QueryFactory.create(input.query_type, args=input.args)
-    extract_data = ExtractMethodFactory.create(f'{query.source_kind_id}-{query.event_type}')
-    logger.info(f"Extracting data using method: {query.source_kind_id}.{query.event_type}.{extract_data.__name__} for query: {type(query).__name__}")
-    return (query.to_summary_base(), await extract_data(query))
+    extract_data = ExtractStrategy.create(input.extract_strategy)
+    logger.info(f"Extracting data using: {query.source_kind_id}.{query.event_type}.{extract_data.__name__} for query: {type(query).__name__}")
+    return await extract_data(query)
 
 
 @activity.defn

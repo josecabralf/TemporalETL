@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from temporalio import activity, workflow
 
 from models.event import Event
-from models.extract_cmd import ExtractMethodFactory
+from models.extract_cmd import ExtractStrategy
 from models.flow_input import FlowInput
 from models.query import QueryFactory
 from models.memory_monitor import MemoryMonitor
@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 class StreamingConfig:
     """Configuration for streaming ETL pipeline"""
     extract_chunk_size: int = 100  # Number of items to extract per chunk
-    transform_batch_size: int = 500  # Number of events to transform per batch
-    load_batch_size: int = 1000  # Number of events to load per batch
+    transform_batch_size: int = 1000  # Number of events to transform per batch
+    load_batch_size: int = 500  # Number of events to load per batch
     max_concurrent_chunks: int = 3  # Maximum concurrent processing chunks
     memory_threshold_mb: int = 500  # Memory threshold to trigger backpressure
 
@@ -39,12 +39,7 @@ class StreamingETLFlow:
     @staticmethod
     def get_activities() -> List[Any]:
         """Return list of activity functions for registration with Temporal worker."""
-        return [
-            streaming_extract_data,
-            transform_data_batch,
-            load_data_batch,
-            get_extraction_metadata
-        ]
+        return [get_etl_metadata, streaming_extract_data, transform_data_batch, load_data_batch]
 
     @workflow.run
     async def run(self, input: FlowInput, config: Optional[StreamingConfig] = None) -> Dict[str, Any]:
@@ -107,27 +102,22 @@ class StreamingETLFlow:
                 logger.info(f"Chunk {chunk_id}: transformed {len(transformed)} events, inserted {inserted} records")
                 return len(transformed), inserted
 
-        # Process data in streaming fashion
-        chunk_tasks = []
-        
         # Start streaming extraction - get all chunks first, then process
         chunks = await workflow.execute_activity(
             "streaming_extract_data", 
             args=(input, config.extract_chunk_size),
-            start_to_close_timeout=timedelta(minutes=30)
+            start_to_close_timeout=timedelta(hours=1)
         )
         
         # Process each chunk
+        chunk_tasks = []
         for chunk_id, chunk_data in chunks:
             chunk_count += 1
             
-            # Process chunk asynchronously
             task = asyncio.create_task(process_chunk(chunk_id, chunk_data))
             chunk_tasks.append(task)
             
-            # Process completed chunks to avoid unbounded memory growth
             if len(chunk_tasks) >= config.max_concurrent_chunks:
-                # Wait for at least one chunk to complete
                 done, pending = await asyncio.wait(chunk_tasks, return_when=asyncio.FIRST_COMPLETED)
                 
                 for completed_task in done:
@@ -137,7 +127,6 @@ class StreamingETLFlow:
                 
                 chunk_tasks = list(pending)
 
-        # Wait for remaining chunks to complete
         if chunk_tasks:
             results = await asyncio.gather(*chunk_tasks)
             for processed, inserted in results:
@@ -155,9 +144,9 @@ class StreamingETLFlow:
 
 
 @activity.defn
-async def get_extraction_metadata(input: FlowInput) -> Dict[str, Any]:
+async def get_etl_metadata(input: FlowInput) -> Dict[str, Any]:
     """
-    Get metadata about the extraction to help plan streaming processing.
+    Get metadata about the extraction to help inform the processing results.
     
     Args:
         input: FlowInput containing query parameters
@@ -165,18 +154,7 @@ async def get_extraction_metadata(input: FlowInput) -> Dict[str, Any]:
     Returns:
         Dictionary with extraction metadata
     """
-    query = QueryFactory.create(input.query_type, args=input.args)
-    
-    # This is a lightweight operation to get size estimates
-    # Implementation depends on the specific query type
-    metadata = {
-        "query_type": input.query_type,
-        "source_kind_id": input.args.get("source_kind_id"),
-        "event_type": input.args.get("event_type"),
-        "estimated_items": "unknown"  # Could be enhanced per query type
-    }
-    
-    return metadata
+    return QueryFactory.create(input.query_type, args=input.args).to_summary_base()
 
 
 @activity.defn
@@ -185,7 +163,7 @@ async def streaming_extract_data(input: FlowInput, chunk_size: int) -> List[Tupl
     monitor.take_snapshot("extraction_start")
     
     query = QueryFactory.create(input.query_type, args=input.args)
-    extract_method = ExtractMethodFactory.create(f'{query.source_kind_id}-{query.event_type}-streaming')
+    extract_method = ExtractStrategy.create(input.extract_strategy)
     
     chunks = []
     chunk_id = 0
