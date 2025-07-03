@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 class Query:
     """
     Abstract base class for all ETL query operations.
-    
-    Query objects encapsulate the parameters and logic needed to extract data 
-    from specific sources like Launchpad APIs, databases, or other systems.
+
+    It encapsulates the parameters and logic needed to extract data 
+    from specific sources.
     """
     source_kind_id: str
     event_type: str
@@ -25,10 +25,6 @@ class Query:
     def __init__(self, source_kind_id: str, event_type: str) -> None:
         """
         Initialize the query with source kind and event type.
-        
-        Args:
-            source_kind_id: Identifier for the data source kind (e.g., "launchpad")
-            event_type: Type of event being queried (e.g., "bug", "question")
         """
         self.source_kind_id = source_kind_id
         self.event_type = event_type
@@ -37,28 +33,12 @@ class Query:
     def from_dict(data: Dict[str, Any]) -> "Query":
         """
         Create a query instance from a dictionary of parameters.
-        
-        Args:
-            data: Dictionary containing query-specific parameters and configuration
-            
-        Returns:
-            Fully configured query instance ready for execution
-            
-        Raises:
-            NotImplementedError: If not implemented by concrete class
-            ValueError: If required parameters are missing or invalid
         """
         raise NotImplementedError("Subclasses must implement from_dict() method.")
 
     def to_summary_base(self) -> Dict[str, Any]:
         """
         Convert the query to a summary dictionary for reporting and logging.
-        
-        Returns:
-            Dictionary containing summarized query information suitable for logging
-            
-        Raises:
-            NotImplementedError: If not implemented by concrete class
         """
         raise NotImplementedError("Subclasses must implement to_summary_base() method.")
 
@@ -99,12 +79,6 @@ class QueryFactory:
     def _find_project_root(marker_files=('.project-root', 'pyproject.toml', 'setup.py', '.git')):
         """
         Find the project root directory by looking for specific marker files.
-        
-        Args:
-            marker_files: List of filenames that indicate the project root
-            
-        Returns:
-            Path to the project root directory
         """
         current = Path(__file__).resolve()
         for parent in [current] + list(current.parents):
@@ -114,12 +88,7 @@ class QueryFactory:
 
     @staticmethod
     def _discover_query_directories():
-        """
-        Automatically discover all directories that might contain query modules.
-        
-        Returns:
-            List of directory paths that might contain query modules
-        """
+        """Automatically discover all directories that might contain query modules."""
         sources_path = os.path.join(QueryFactory._project_root, 'sources') # type: ignore
         logger.info("Discovering query directories in sources path: %s", sources_path)
         query_directories = []

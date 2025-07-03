@@ -1,7 +1,7 @@
 import os
 
 
-TABLE_NAME = os.getenv('EVENTS_TABLE', 'launchpad_events')
+TABLE_NAME = os.getenv('DB_EVENTS_TABLE', 'launchpad_events')
 
 class DatabaseConfiguration:
     """
@@ -17,9 +17,6 @@ class DatabaseConfiguration:
         self._name = os.getenv('DB_NAME', 'launchpad_events')
         self._user = os.getenv('DB_USER', 'postgres')
         self._password = os.getenv('DB_PASSWORD')
-        
-        self.min_conn = int(os.getenv('DB_MIN_CONN', '1'))
-        self.max_conn = int(os.getenv('DB_MAX_CONN', '20'))
         
         if not self._password:
             raise ValueError("DB_PASSWORD environment variable is required for PostgreSQL connection")

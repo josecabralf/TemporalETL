@@ -4,6 +4,8 @@ from typing import Any, Dict, List, Tuple
 
 from temporalio import activity, workflow
 
+from db.db import Database
+
 from models.event import Event
 from models.etl.extract_cmd import ExtractStrategy
 from models.etl.flow_input import ETLFlowInput
@@ -25,43 +27,12 @@ class ETLFlow:
 
     @staticmethod
     def get_activities() -> List[Any]:
-        """
-        Return a list of activity functions to register with the Temporal worker.
-        
-        The activities should be defined in the same file as the workflow class
-        or imported from related modules.
-        
-        Returns:
-            List of activity function references that will be registered
-            with the Temporal worker.
-            
-        Raises:
-            NotImplementedError: If not implemented by concrete class.
-            
-        Example:
-            @staticmethod
-            def get_activities() -> List[Any]:
-                return [extract_data, transform_data, load_data]
-        """
+        """Return a list of activity functions to register with the Temporal worker."""
         return [get_etl_metadata, extract_data, transform_data, load_data]
 
     @workflow.run
     async def run(self, input: ETLFlowInput) -> Dict[str, Any]:
-        """
-        Execute the ETL workflow pipeline.
-        
-        Args:
-            input: Dictionary containing workflow parameters with structure:
-                - type: Query type identifier (e.g., "LaunchpadQuery")
-                - args: Dictionary of query-specific arguments
-                
-        Returns:
-            Dictionary containing workflow execution summary
-                
-        Raises:
-            ActivityError: If any activity fails after exhausting retries
-            ValueError: If input parameters are invalid or missing
-        """
+        """Execute the ETL workflow pipeline."""
         summary: Dict[str, Any] = {
             "workflow_id": workflow.info().workflow_id,
             "items_extracted": 0,
@@ -101,15 +72,7 @@ class ETLFlow:
 
 @activity.defn
 async def get_etl_metadata(input: ETLFlowInput) -> Dict[str, Any]:
-    """
-    Get metadata about the extraction to help inform the processing results.
-    
-    Args:
-        input: FlowInput containing query parameters
-        
-    Returns:
-        Dictionary with extraction metadata
-    """
+    """Get metadata about the extraction to help inform the processing results."""
     return QueryFactory.create(input.query_type, args=input.args).to_summary_base()
 
 
@@ -147,7 +110,6 @@ async def transform_data(events: List[dict], source_kind_id: str, event_type: st
 
 @activity.defn
 async def load_data(events: List[Event]) -> int:
-    from db.db import Database
     db = Database()
 
     already_inserted: int = int(activity.info().heartbeat_details[0]) if activity.info().heartbeat_details else 0

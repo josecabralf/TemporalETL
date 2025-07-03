@@ -51,15 +51,10 @@ class LaunchpadQuery(Query):
         """
         Create a LaunchpadQuery instance from a dictionary of parameters.
         
-        This factory method enables creation of LaunchpadQuery instances from
-        serialized data such as workflow inputs, configuration files, or API payloads.
-
-        It provides default values for missing parameters.
-        
         Args:
             data: Dictionary containing Launchpad query parameters
-                 Expected keys: application_name, service_root, version, member,
-                               data_date_start, data_date_end
+                 Expected keys: application_name, service_root, version,
+                                member, data_date_start, data_date_end, event_type
                  
         Returns:
             Configured LaunchpadQuery instance ready for use

@@ -21,9 +21,6 @@ def extract_method(name: str):
     
     Args:
         extract_cmd_type: String identifier for the extract command type
-        
-    Returns:
-        Decorated function that is registered in the global registry
     """
     def decorator(func: Callable) -> Callable:
         _extract_method_registry[name] = func
@@ -47,12 +44,7 @@ class ExtractStrategy:
 
     @staticmethod
     def _discover_flow_directories():
-        """
-        Automatically discover all directories that contain 'flows' subdirectories.
-        
-        Returns:
-            List of flow directory paths (e.g., ['sources/launchpad/flows', 'sources/github/flows'])
-        """
+        """Automatically discover all directories that contain 'flows' subdirectories."""
         sources_path = os.path.join(ExtractStrategy._project_root, 'sources') # type: ignore
         flow_directories = []
         

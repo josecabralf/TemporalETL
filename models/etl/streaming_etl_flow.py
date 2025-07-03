@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from temporalio import activity, workflow
 
+from db.db import Database
 from models.event import Event
 from models.etl.extract_cmd import ExtractStrategy
 from models.etl.flow_input import ETLFlowInput
@@ -147,12 +148,6 @@ class StreamingETLFlow:
 async def get_etl_metadata(input: ETLFlowInput) -> Dict[str, Any]:
     """
     Get metadata about the extraction to help inform the processing results.
-    
-    Args:
-        input: FlowInput containing query parameters
-        
-    Returns:
-        Dictionary with extraction metadata
     """
     return QueryFactory.create(input.query_type, args=input.args).to_summary_base()
 
@@ -172,8 +167,6 @@ async def streaming_extract_data(input: ETLFlowInput, chunk_size: int) -> List[T
     chunks = []
     chunk_id = 0
     
-    # Use truly streaming extraction that yields chunks incrementally
-    logger.info("Using truly streaming extraction with optimal memory usage")
     async for chunk_data in extract_method(query, chunk_size):
         logger.info(f"Received streaming chunk {chunk_id} with {len(chunk_data)} items")
         chunks.append((chunk_id, chunk_data))
@@ -219,7 +212,6 @@ async def transform_data_batch(events: List[dict], source_kind_id: str, event_ty
             transformed_events.append(event)
         except Exception as ex:
             logger.error(f"Error transforming event {e.get('event_id', 'unknown')}: {ex}")
-            # Continue processing other events instead of failing the entire batch
             continue
     
     logger.info(f"Successfully transformed {len(transformed_events)} out of {len(events)} events")
@@ -227,9 +219,7 @@ async def transform_data_batch(events: List[dict], source_kind_id: str, event_ty
 
 
 @activity.defn
-async def load_data_batch(events: List[Event], batch_size: int) -> int:
-    from db.db import Database
-    
+async def load_data_batch(events: List[Event], batch_size: int) -> int:    
     if not events:
         return 0
     
@@ -241,7 +231,6 @@ async def load_data_batch(events: List[Event], batch_size: int) -> int:
     
     logger.info(f"Loading {len(events)} events in sub-batches of {batch_size}")
     
-    # Process in sub-batches to manage database load
     for i in range(0, len(events), batch_size):
         sub_batch = events[i:i + batch_size]
         try:
@@ -249,16 +238,13 @@ async def load_data_batch(events: List[Event], batch_size: int) -> int:
             total_inserted += inserted
             logger.info(f"Inserted sub-batch {i//batch_size + 1}: {inserted} events")
             
-            # Monitor memory usage during loading
             if (i // batch_size + 1) % 5 == 0:
                 monitor.take_snapshot(f"load_progress_batch_{i//batch_size + 1}")
             
-            # Add heartbeat for long-running loads
             activity.heartbeat(f"Loaded {total_inserted}/{len(events)} events")
             
         except Exception as ex:
             logger.error(f"Error inserting sub-batch {i//batch_size + 1}: {ex}")
-            # Continue with remaining batches
             continue
     
     monitor.take_snapshot("load_complete")

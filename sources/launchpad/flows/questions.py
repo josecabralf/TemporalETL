@@ -134,7 +134,7 @@ def extract_question_events(query: LaunchpadQuery, question, time_zone: str, fro
             'time_zone':            time_zone,
             'relation_properties':  extract_answer_relation_props(answer),
             'event_properties':     event_properties,
-            'metrics':              {}
+            'metrics':              metrics
         })
     
     return batch_events
