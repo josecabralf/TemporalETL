@@ -1,8 +1,5 @@
 import os
 
-
-TABLE_NAME = os.getenv('DB_EVENTS_TABLE', 'launchpad_events')
-
 class DatabaseConfiguration:
     """
     Configuration class for the Database singleton.
@@ -17,9 +14,10 @@ class DatabaseConfiguration:
         self._name = os.getenv('DB_NAME', 'launchpad_events')
         self._user = os.getenv('DB_USER', 'postgres')
         self._password = os.getenv('DB_PASSWORD')
-        
         if not self._password:
             raise ValueError("DB_PASSWORD environment variable is required for PostgreSQL connection")
+
+        self.events_table = os.getenv('DB_EVENTS_TABLE', 'launchpad_events')
 
     @property
     def connection_string(self) -> str:

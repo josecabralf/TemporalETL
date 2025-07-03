@@ -6,7 +6,7 @@ from contextlib import contextmanager
 import psycopg2
 import psycopg2.extras
 
-from db.configuration import DatabaseConfiguration, TABLE_NAME
+from db.configuration import DatabaseConfiguration
 from db.sql import get_create_events_table_query, get_insert_events_query, get_update_events_parents_query
 from models.event import Event
 
@@ -39,13 +39,13 @@ class Database:
         """Ensure the database schema exists."""
         import re
         
-        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', TABLE_NAME):
-            raise ValueError(f"Invalid table name: {TABLE_NAME}")
+        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', self._config.events_table):
+            raise ValueError(f"Invalid table name: {self._config.events_table}")
         
         logger.info("Ensuring schema exists in the database")
         with self._get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute(get_create_events_table_query(TABLE_NAME))
+                cursor.execute(get_create_events_table_query(self._config.events_table))
             conn.commit()
     
     @contextmanager
@@ -104,7 +104,7 @@ class Database:
                     for e in events
                 ]
                 
-                psycopg2.extras.execute_values(cursor, get_insert_events_query(TABLE_NAME), values)
+                psycopg2.extras.execute_values(cursor, get_insert_events_query(self._config.events_table), values)
                 inserted_count = cursor.rowcount
                 
                 # Update parent event properties
@@ -116,7 +116,7 @@ class Database:
                         for parent_id, props in parent_updates.items()
                     ]
                     
-                    psycopg2.extras.execute_values(cursor, get_update_events_parents_query(TABLE_NAME), update_values)
+                    psycopg2.extras.execute_values(cursor, get_update_events_parents_query(self._config.events_table), update_values)
                 
                 conn.commit()
                 logger.info(f"Successfully inserted {inserted_count} events")
