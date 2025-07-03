@@ -1,6 +1,7 @@
 from importlib import import_module
 import logging
 import os
+from pathlib import Path
 import pkgutil
 from typing import Dict, Callable
 
@@ -32,7 +33,18 @@ def extract_method(name: str):
 
 
 class ExtractStrategy:
+    _project_root = None
     _modules_imported = False
+
+    @staticmethod
+    def find_project_root(marker_files=('.project-root', 'pyproject.toml', 'setup.py', '.git')):
+        """Find project root by looking for marker files."""
+        current = Path(__file__).resolve()
+        for parent in [current] + list(current.parents):
+            print("Checking parent:", parent)
+            if any((parent / marker).exists() for marker in marker_files):
+                return parent
+        return current.parent  # Fallback
 
     @staticmethod
     def _discover_flow_directories():
@@ -40,14 +52,19 @@ class ExtractStrategy:
         Automatically discover all directories that contain 'flows' subdirectories.
         
         Returns:
-            List of flow directory paths (e.g., ['launchpad/flows', 'github/flows', 'jira/flows'])
+            List of flow directory paths (e.g., ['sources/launchpad/flows', 'sources/github/flows'])
         """
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        sources_path = os.path.join(ExtractStrategy._project_root, 'sources') # type: ignore
         flow_directories = []
         
-        # Walk through all directories in project root
-        for item in os.listdir(project_root):
-            item_path = os.path.join(project_root, item)
+        # Check if sources directory exists
+        if not os.path.isdir(sources_path):
+            logger.warning("Sources directory not found: %s", sources_path)
+            return flow_directories
+        
+        # Walk through all directories in sources
+        for item in os.listdir(sources_path):
+            item_path = os.path.join(sources_path, item)
             
             # Skip hidden directories, __pycache__, .venv, etc.
             if item.startswith('.') or item.startswith('__') or item in ['venv', '.venv', 'node_modules']:
@@ -56,7 +73,7 @@ class ExtractStrategy:
             if os.path.isdir(item_path):
                 flows_path = os.path.join(item_path, 'flows')
                 if os.path.isdir(flows_path):
-                    flow_directories.append(f"{item}/flows")
+                    flow_directories.append(f"sources/{item}/flows")
         
         return flow_directories
 
@@ -65,19 +82,18 @@ class ExtractStrategy:
         """Auto-discover and import all flow modules to trigger decorator registration."""
         if ExtractStrategy._modules_imported:
             return
-            
-        # Get project root directory
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         
+        if not ExtractStrategy._project_root:
+            ExtractStrategy._project_root = ExtractStrategy.find_project_root()
+
         # Dynamically discover flow directories
         flow_directories = ExtractStrategy._discover_flow_directories()
         
         for flow_dir in flow_directories:
-            flow_path = os.path.join(project_root, flow_dir)
+            flow_path = os.path.join(ExtractStrategy._project_root, flow_dir)
             
             # Convert path to module path
             module_prefix = flow_dir.replace("/", ".").replace("\\", ".")
-            
             try:
                 # Import all Python files in the directory
                 for finder, name, ispkg in pkgutil.iter_modules([flow_path]):

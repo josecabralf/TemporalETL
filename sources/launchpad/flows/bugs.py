@@ -1,7 +1,7 @@
 from typing import Any, AsyncIterator, Dict, List
 
-from launchpad.query import LaunchpadQuery
-from models.extract_cmd import extract_method
+from sources.launchpad.query import LaunchpadQuery
+from models.etl.extract_cmd import extract_method
 
 from launchpadlib.launchpad import Launchpad
 
@@ -100,6 +100,8 @@ async def extract_data_streaming(query: LaunchpadQuery, chunk_size: int) -> Asyn
         logger.info(f"Chunk {chunk_count} produced {len(events_batch)} events")
         yield events_batch
 
+setattr(extract_data, "is_streaming", False)
+setattr(extract_data_streaming, "is_streaming", True)
 
 """
 Helper functions to extract properties from bug, activity, and message objects

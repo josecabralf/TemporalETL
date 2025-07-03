@@ -5,9 +5,9 @@ from typing import Any, Dict, List, Tuple
 from temporalio import activity, workflow
 
 from models.event import Event
-from models.extract_cmd import ExtractStrategy
-from models.flow_input import FlowInput
-from models.query import QueryFactory
+from models.etl.extract_cmd import ExtractStrategy
+from models.etl.flow_input import ETLFlowInput
+from models.etl.query import QueryFactory
 
 
 # Configure logging
@@ -46,7 +46,7 @@ class ETLFlow:
         return [get_etl_metadata, extract_data, transform_data, load_data]
 
     @workflow.run
-    async def run(self, input: FlowInput) -> Dict[str, Any]:
+    async def run(self, input: ETLFlowInput) -> Dict[str, Any]:
         """
         Execute the ETL workflow pipeline.
         
@@ -100,7 +100,7 @@ class ETLFlow:
 
 
 @activity.defn
-async def get_etl_metadata(input: FlowInput) -> Dict[str, Any]:
+async def get_etl_metadata(input: ETLFlowInput) -> Dict[str, Any]:
     """
     Get metadata about the extraction to help inform the processing results.
     
@@ -114,7 +114,7 @@ async def get_etl_metadata(input: FlowInput) -> Dict[str, Any]:
 
 
 @activity.defn
-async def extract_data(input: FlowInput) -> List[Dict[str, Any]]:
+async def extract_data(input: ETLFlowInput) -> List[Dict[str, Any]]:
     query = QueryFactory.create(input.query_type, args=input.args)
     extract_data = ExtractStrategy.create(input.extract_strategy)
     logger.info(f"Extracting data using: {query.source_kind_id}.{query.event_type}.{extract_data.__name__} for query: {type(query).__name__}")

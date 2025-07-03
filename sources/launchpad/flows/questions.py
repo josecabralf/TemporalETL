@@ -4,9 +4,9 @@ import requests
 from typing import Any, AsyncIterator, Dict, List 
 
 from models.date_utils import date_in_range, dates_in_range
-from models.extract_cmd import extract_method
+from models.etl.extract_cmd import extract_method
 
-from launchpad.query import LaunchpadQuery
+from sources.launchpad.query import LaunchpadQuery
 
 from launchpadlib.launchpad import Launchpad
 
@@ -79,6 +79,8 @@ async def extract_data_streaming(query: LaunchpadQuery, chunk_size: int) -> Asyn
         # Yield the chunk immediately instead of accumulating
         yield events_batch
 
+setattr(extract_data, "is_streaming", False)
+setattr(extract_data_streaming, "is_streaming", True)
 
 """
 Helper functions to extract properties from bug, activity, and message objects

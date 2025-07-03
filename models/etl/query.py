@@ -101,22 +101,30 @@ class QueryFactory:
         Returns:
             List of directory paths that might contain query modules
         """
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        sources_path = os.path.join(project_root, 'sources')
+        logger.info("Discovering query directories in sources path: %s", sources_path)
         query_directories = []
         
-        # Walk through all directories in project root
-        for item in os.listdir(project_root):
-            item_path = os.path.join(project_root, item)
+        # Check if sources directory exists
+        if not os.path.isdir(sources_path):
+            logger.warning("Sources directory not found: %s", sources_path)
+            return query_directories
+        
+        # Walk through all directories in sources
+        for item in os.listdir(sources_path):
+            item_path = os.path.join(sources_path, item)
             
             # Skip hidden directories, __pycache__, .venv, etc.
             if item.startswith('.') or item.startswith('__') or item in ['venv', '.venv', 'node_modules']:
                 continue
                 
             if os.path.isdir(item_path):
-                # Check if directory contains query.py or query modules
+                # Check if directory contains query.py
                 query_file = os.path.join(item_path, 'query.py')
                 if os.path.isfile(query_file):
-                    query_directories.append(item)
+                    query_directories.append(f"sources.{item}")
+                    logger.info("Found query module: sources.%s.query", item)
         
         return query_directories
 
@@ -126,17 +134,15 @@ class QueryFactory:
         if QueryFactory._modules_imported:
             return
             
-        # Get project root directory
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        
         # Dynamically discover query directories
         query_directories = QueryFactory._discover_query_directories()
         
-        for query_dir in query_directories:
-            query_module = f"{query_dir}.query"
+        for query_module_base in query_directories:
+            query_module = f"{query_module_base}.query"
             
             try:
                 import_module(query_module)
+                logger.info("Successfully imported query module: %s", query_module)
             except ImportError as e:
                 logger.warning("Failed to import query module %s: %s", query_module, e)
             except Exception as e:

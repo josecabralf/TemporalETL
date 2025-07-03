@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, Any
 
-from models.query import Query, query_type
+from models.etl.query import Query, query_type
 
 
 @dataclass

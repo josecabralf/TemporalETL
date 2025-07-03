@@ -1,7 +1,7 @@
 import os
 import asyncio
 from temporalio.client import Client
-from models.etl_worker import ETLWorker
+from models.etl.worker import ETLWorker
 
 async def main():
     # Connect to local Temporal service

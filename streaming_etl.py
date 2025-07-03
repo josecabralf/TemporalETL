@@ -13,8 +13,8 @@ from datetime import datetime, timedelta
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from models.streaming_etl_flow import StreamingETLFlow, StreamingConfig
-from models.flow_input import FlowInput
+from models.etl.streaming_etl_flow import StreamingETLFlow, StreamingConfig
+from models.etl.flow_input import ETLFlowInput
 
 
 # Configure logging
@@ -57,7 +57,7 @@ async def run_bugs_streaming_workflow_example():
     )
     
     # Create workflow input
-    flow_input = FlowInput(
+    flow_input = ETLFlowInput(
         query_type="launchpad",
         extract_strategy="launchpad-bugs-streaming",
         args={
@@ -102,7 +102,7 @@ async def run_questions_streaming_example():
         memory_threshold_mb=400
     )
     
-    flow_input = FlowInput(
+    flow_input = ETLFlowInput(
         query_type="launchpad",
         extract_strategy="launchpad-questions-streaming",
         args={
@@ -142,7 +142,7 @@ async def run_merge_proposals_streaming_example():
         memory_threshold_mb=350
     )
     
-    flow_input = FlowInput(
+    flow_input = ETLFlowInput(
         query_type="launchpad",
         extract_strategy="launchpad-merge_proposals-streaming",
         args={

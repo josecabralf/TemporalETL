@@ -4,8 +4,8 @@ import os
 
 from temporalio.client import Client
 
-from models.etl_flow import ETLFlow
-from models.flow_input import FlowInput
+from models.etl.flow import ETLFlow
+from models.etl.flow_input import ETLFlowInput
 
 async def main():
     # Connect to Temporal server
@@ -32,7 +32,7 @@ async def main():
     for i, config in enumerate(workflow_configs):
         workflow_id = f"launchpad-workflow-{i+1}-{uuid.uuid4()}"
         
-        input = FlowInput(
+        input = ETLFlowInput(
             query_type=config["source_kind_id"],
             extract_strategy=EXTRACT_STRATEGY,
             args=config

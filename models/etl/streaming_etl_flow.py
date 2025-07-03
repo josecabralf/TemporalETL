@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from temporalio import activity, workflow
 
 from models.event import Event
-from models.extract_cmd import ExtractStrategy
-from models.flow_input import FlowInput
-from models.query import QueryFactory
+from models.etl.extract_cmd import ExtractStrategy
+from models.etl.flow_input import ETLFlowInput
+from models.etl.query import QueryFactory
 from models.memory_monitor import MemoryMonitor
 
 
@@ -42,7 +42,7 @@ class StreamingETLFlow:
         return [get_etl_metadata, streaming_extract_data, transform_data_batch, load_data_batch]
 
     @workflow.run
-    async def run(self, input: FlowInput, config: Optional[StreamingConfig] = None) -> Dict[str, Any]:
+    async def run(self, input: ETLFlowInput, config: Optional[StreamingConfig] = None) -> Dict[str, Any]:
         """
         Execute the streaming ETL workflow pipeline.
         
@@ -144,7 +144,7 @@ class StreamingETLFlow:
 
 
 @activity.defn
-async def get_etl_metadata(input: FlowInput) -> Dict[str, Any]:
+async def get_etl_metadata(input: ETLFlowInput) -> Dict[str, Any]:
     """
     Get metadata about the extraction to help inform the processing results.
     
@@ -158,13 +158,17 @@ async def get_etl_metadata(input: FlowInput) -> Dict[str, Any]:
 
 
 @activity.defn
-async def streaming_extract_data(input: FlowInput, chunk_size: int) -> List[Tuple[int, List[Dict[str, Any]]]]:
+async def streaming_extract_data(input: ETLFlowInput, chunk_size: int) -> List[Tuple[int, List[Dict[str, Any]]]]:
     monitor = MemoryMonitor()
     monitor.take_snapshot("extraction_start")
     
     query = QueryFactory.create(input.query_type, args=input.args)
     extract_method = ExtractStrategy.create(input.extract_strategy)
-    
+
+    if not getattr(extract_method, "is_streaming", False):
+        logger.error("Extract method %s does not support streaming extraction. Returning empty list.", input.extract_strategy)
+        return []
+
     chunks = []
     chunk_id = 0
     

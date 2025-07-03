@@ -4,8 +4,8 @@ from typing import Type
 from temporalio.worker import Worker
 from temporalio.client import Client
 
-from models.etl_flow import ETLFlow
-from models.streaming_etl_flow import StreamingETLFlow
+from models.etl.flow import ETLFlow
+from models.etl.streaming_etl_flow import StreamingETLFlow
 
 
 # Configure logging

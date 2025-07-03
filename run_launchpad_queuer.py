@@ -22,8 +22,8 @@ from launchpadlib.launchpad import Launchpad
 
 from temporalio.client import Client
 
-from models.etl_flow import ETLFlow
-from models.flow_input import FlowInput
+from models.etl.flow import ETLFlow
+from models.etl.flow_input import ETLFlowInput
 
 
 # Configure logging
@@ -66,7 +66,7 @@ async def queue_workflows():
         member_workflows = []
         
         for event_type, strategy in EVENTS_AND_STRATS.items():
-            input = FlowInput(
+            input = ETLFlowInput(
                 query_type=SOURCE_KIND_ID,
                 extract_strategy=strategy,
                 args={

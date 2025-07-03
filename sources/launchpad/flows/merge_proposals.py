@@ -4,9 +4,9 @@ import requests
 from typing import Any, AsyncIterator, Dict, List 
 
 from models.date_utils import date_in_range, dates_in_range
-from models.extract_cmd import extract_method
+from models.etl.extract_cmd import extract_method
 
-from launchpad.query import LaunchpadQuery
+from sources.launchpad.query import LaunchpadQuery
 
 from launchpadlib.launchpad import Launchpad
 
@@ -57,7 +57,7 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
 
 
 @extract_method(name="launchpad-merge_proposals-streaming")
-async def extract_data_streaming_enhanced(query: LaunchpadQuery, chunk_size: int) -> AsyncIterator[List[Dict[str, Any]]]:
+async def extract_data_streaming(query: LaunchpadQuery, chunk_size: int) -> AsyncIterator[List[Dict[str, Any]]]:
     logger.info("Streaming extraction of Launchpad merge proposals data for member: %s with chunk size: %d", query.member, chunk_size)
     lp = Launchpad.login_anonymously(consumer_name=query.application_name, service_root=query.service_root, version=query.version)
     if not lp: raise ValueError("Failed to connect to Launchpad API")
@@ -91,6 +91,8 @@ async def extract_data_streaming_enhanced(query: LaunchpadQuery, chunk_size: int
         # Yield the chunk immediately instead of accumulating
         yield events_batch
 
+setattr(extract_data, "is_streaming", False)
+setattr(extract_data_streaming, "is_streaming", True)
 
 """
 Helper functions to extract properties from bug, activity, and message objects

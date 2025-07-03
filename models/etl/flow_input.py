@@ -1,9 +1,9 @@
-from typing import Type, Dict, Any
+from typing import Dict, Any
 from dataclasses import dataclass
 
 
 @dataclass
-class FlowInput:
+class ETLFlowInput:
     """
     Standardized input container for workflow parameters.
     
