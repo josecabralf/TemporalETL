@@ -1,12 +1,16 @@
 # TemporalETL
 
-A robust ETL (Extract, Transform, Load) framework built on [Temporal](https://temporal.io/) for processing Launchpad data. This project provides a scalable, fault-tolerant solution for extracting events from Ubuntu's Launchpad platform and transforming them into standardized event records for analytics and reporting.
+A robust ETL (Extract, Transform, Load) framework built on [Temporal](https://temporal.io/) for processing Launchpad data and other sources. This project provides a scalable, fault-tolerant solution for extracting events from various platforms and transforming them into standardized event records for analytics and reporting.
 
-**Latest Updates (June 2025):**
-- ✨ **Decorator-based Architecture**: Auto-discovery and registration of query types and extraction methods This simplifies the addition of new data sources by using `@extract_method()` and `@query_type()` decorators
-- 📦 **Modular Worker System**: Unified `ETLWorker` class for simplified worker management
-- 🛡️ **Enhanced Database Layer**: Thread-safe singleton with automatic schema creation and improved connection pooling
-- 🏗️ **Automated Boilerplate Code Creation**: Use `scripts/new.py` to safely create a new source for data extraction.
+**Latest Updates (July 2025):**
+- 🚀 **Streaming ETL Pipeline**: New `StreamingETLFlow` for memory-efficient processing of large datasets with configurable chunk sizes and concurrent processing
+- ✨ **Decorator-based Architecture**: Auto-discovery and registration of query types and extraction methods using `@extract_method()` and `@query_type()` decorators
+- 📦 **Modular Worker System**: Unified `ETLWorker` and `StreamingETLWorker` classes for simplified worker management
+- 🛡️ **Enhanced Database Layer**: Thread-safe singleton with automatic schema creation, connection pooling, and batch operations with exponential backoff retry logic
+- 📊 **Advanced Memory Management**: Built-in memory monitoring and backpressure handling in streaming workflows
+- 🔧 **Improved ETLFlowInput**: Enhanced input standardization with `extract_strategy` parameter for better workflow routing
+
+> **Documentation Updated**: July 3, 2025 - Synchronized with current codebase implementation
 
 ## 📚 Table of Contents
 
@@ -18,6 +22,7 @@ A robust ETL (Extract, Transform, Load) framework built on [Temporal](https://te
 - [Usage](#-usage)
 - [Configuration](#-configuration)
 - [Database Schema](#-database-schema)
+- [🚀 Creating New Sources](#-creating-new-sources-with-newpy) <!-- New section -->
 - [Extending the System](#-extending-the-system)
 - [Additional Resources](#-additional-resources)
 
@@ -25,15 +30,18 @@ A robust ETL (Extract, Transform, Load) framework built on [Temporal](https://te
 
 TemporalETL uses Temporal workflows to orchestrate reliable ETL pipelines that can handle failures, retries, and long-running operations gracefully. The system is built around a modular, decorator-based architecture that enables automatic discovery and registration of components:
 
-- **ETL Flow System**: Concrete `ETLFlow` implementation that orchestrates extract, transform, and load operations through Temporal activities
+- **ETL Flow System**: Two concrete implementations:
+  - `ETLFlow`: Standard batch processing with configurable batch sizes
+  - `StreamingETLFlow`: Memory-efficient streaming processing with chunk-based processing and backpressure handling
 - **Query System**: Flexible query abstraction with `Query` base class and decorator-based registration via `@query_type()`. `QueryFactory` provides auto-discovery and dynamic instantiation of query types
-- **Extract Method Factory**: `ExtractMethodFactory` with decorator-based registration via `@extract_method()` automatically discovers and loads extraction methods from flow directories
-- **Input Standardization**: `FlowInput` provides consistent parameter handling across different workflow types
-- **ETL Worker Management**: `ETLWorker` class manages Temporal worker lifecycle with automatic workflow and activity registration
+- **Extract Method Factory**: `ExtractStrategy` with decorator-based registration via `@extract_method()` automatically discovers and loads extraction methods from flow directories
+- **Input Standardization**: `ETLFlowInput` provides consistent parameter handling with `query_type` and `extract_strategy` routing across different workflow types
+- **ETL Worker Management**: `ETLWorker` and `StreamingETLWorker` classes manage Temporal worker lifecycle with automatic workflow and activity registration
 - **Activity Functions**: Discrete units of work (extract, transform, load) that can be independently scaled and retried
-- **Database Layer**: Thread-safe singleton PostgreSQL database with connection pooling, batch processing, and automatic schema creation
+- **Database Layer**: Thread-safe singleton PostgreSQL database with connection pooling, batch processing, health monitoring, and automatic schema creation with JSONB support
+- **Memory Management**: Built-in memory monitoring and configurable thresholds for streaming workflows
 
-The system extracts data from Launchpad APIs (bugs, merge proposals, questions), transforms it into standardized event formats, and loads it into a PostgreSQL database for analytics.
+The system extracts data from various APIs (Launchpad bugs, merge proposals, questions, and extensible to other sources), transforms it into standardized event formats, and loads it into a PostgreSQL database for analytics.
 
 ## 📊 Class Diagram
 
@@ -47,12 +55,12 @@ config:
 classDiagram
 direction LR
 
-    FlowInput --> ETLFlow : receives
+    ETLFlowInput --> ETLFlow : receives
 
     ETLWorker --> ETLFlow : registers
 
-    ETLFlow --> ExtractMethodFactory : uses
-    ExtractMethodFactory ..> extract_data : creates
+    ETLFlow --> ExtractStrategy : uses
+    ExtractStrategy ..> extract_data : creates
     extract_data <|.. LaunchpadBugs
     extract_data <|.. LaunchpadMergeProposals
     extract_data <|.. LaunchpadQuestions
@@ -67,28 +75,28 @@ direction LR
     class ETLWorker {
         +client: Client
         +worker: Worker
-        +get_worker() Worker
+        +_get_worker() Worker
         +run() void
     }
 
-    class FlowInput {
+    class ETLFlowInput {
         +query_type: str
+        +extract_strategy: str
         +args: Dict[str, Any]
     }
 
     class ETLFlow {
         +queue_name: str
         +BATCH_SIZE: int
-        +run(input: FlowInput) Dict[str, Any]
+        +run(input: ETLFlowInput) Dict[str, Any]
         +get_activities() List[Any]
     }
 
-    class ExtractMethodFactory {
+    class ExtractStrategy {
         -_modules_imported: bool
         -_discover_flow_directories() List[str]
         -_discover_and_import_modules() void
         +create(extract_cmd_type: str) Callable
-        +get_registered_types() List[str]
     }
 
     class QueryFactory {
@@ -96,7 +104,6 @@ direction LR
         -_discover_query_directories() List[str]
         -_discover_and_import_modules() void
         +create(query_type: str, args: dict) Query
-        +get_registered_types() List[str]
     }
 
     class Query {
@@ -161,22 +168,24 @@ direction LR
         +get_connection() Connection
         +health_check() bool
         +get_pool_status() dict
-        +_create_schema() void
+        -_ensure_schema() void
     }
 ```
-
 
 ## 🚀 Features
 
 - **Temporal-based Orchestration**: Leverages Temporal for reliable workflow execution with automatic retries and error handling
+- **Dual Processing Modes**: 
+  - **Batch ETL**: Standard `ETLFlow` for traditional batch processing with configurable batch sizes
+  - **Streaming ETL**: `StreamingETLFlow` for memory-efficient processing of large datasets with chunked extraction and concurrent processing
 - **Multi-Source Data Extraction**: Support for Launchpad bugs, merge proposals, and questions with decorator-based pluggable extraction methods
-- **ETL Pipeline Workflows**: Specialized `ETLFlow` implementation for Extract, Transform, Load operations with batch processing
-- **Fault Tolerance**: Built-in resilience against network failures, API rate limits, and transient errors with exponential backoff
-- **Scalable Processing**: Support for parallel workflow execution across multiple workers with configurable batch sizes
-- **Event Standardization**: Transforms diverse Launchpad data into standardized event records with rich metadata
-- **PostgreSQL Integration**: Production-ready database storage with connection pooling, thread-safety, batch operations, and automatic schema creation
 - **Auto-Discovery Architecture**: Decorator-based registration system with automatic discovery of query types and extraction methods
-- **Thread-Safe Database**: Singleton database manager with connection pooling and health monitoring
+- **Memory Management**: Built-in memory monitoring with configurable thresholds and backpressure handling for streaming workflows
+- **Fault Tolerance**: Built-in resilience against network failures, API rate limits, and transient errors with exponential backoff
+- **Scalable Processing**: Support for parallel workflow execution across multiple workers with configurable batch sizes and concurrent chunk processing
+- **Event Standardization**: Transforms diverse source data into standardized event records with rich metadata and JSONB properties
+- **PostgreSQL Integration**: Production-ready database storage with connection pooling, thread-safety, batch operations, health monitoring, and automatic schema creation
+- **Thread-Safe Database**: Singleton database manager with connection pooling, health monitoring, and automatic reconnection
 - **Comprehensive Logging**: Structured logging throughout the system for observability and debugging
 
 ## 📋 Prerequisites
@@ -192,6 +201,8 @@ direction LR
 - **launchpadlib**: Ubuntu Launchpad API client library (v2.1.0)
 - **pytz**: Timezone handling for event processing (v2025.2)
 - **python-dotenv**: Environment variable management (v1.1.0)
+- **psutil**: Memory monitoring for streaming workflows (v7.0.0)
+- **tqdm**: Progress bars for long-running operations (v4.67.1)
 
 ## 🛠️ Installation
 
@@ -242,67 +253,93 @@ python run_bugs_wf.py
 ```
 
 **Available Scripts:**
-- `worker.py`: Generic ETL worker that handles all workflow types
+- `worker.py`: Standard ETL worker that handles ETLFlow workflows
+- `streaming_etl.py`: Streaming ETL worker and examples for memory-efficient processing
 - `run_bugs_wf.py`: Example workflow runner for Launchpad bugs data
-- `run_launchpad_queuer.py`: Workflow queuer for batch processing
+- `run_launchpad_queuer.py`: Workflow queuer for batch processing multiple configurations
 
 **Exploring Registered Components:**
 ```python
 # See all registered query types
-from models.query import QueryFactory
-print("Query types:", QueryFactory.get_registered_types())
+from models.etl.query import QueryFactory
+QueryFactory._discover_and_import_modules()  # Ensure modules are loaded
+print("Query types:", list(QueryFactory._query_type_registry.keys()))
 
 # See all registered extract methods  
-from models.extract_cmd import ExtractMethodFactory
-print("Extract methods:", ExtractMethodFactory.get_registered_types())
+from models.etl.extract_cmd import ExtractStrategy
+ExtractStrategy._discover_and_import_modules()  # Ensure modules are loaded
+print("Extract methods:", list(ExtractStrategy._extract_method_registry.keys()))
 ```
 
-## 🚀 Usage
+**Creating New Sources:**
+```bash
+# Quick start - create a new source with proper structure
+python scripts/new.py github issues pull_requests
 
-### Programmatic Usage
+# See what was created
+ls sources/github/
+# query.py  flows/
 
-```python
-import asyncio
-from temporalio.client import Client
-from models.flow_input import FlowInput
-from models.etl_flow import ETLFlow
-
-async def run_etl_workflow():
-    # Connect to Temporal
-    client = await Client.connect("localhost:7233")
-    
-    # Create input with query parameters
-    flow_input = FlowInput(
-        query_type="launchpad",  # Uses @query_type("launchpad") registered LaunchpadQuery
-        args={
-            "application_name": "my-launchpad-app",
-            "service_root": "production", 
-            "version": "devel",
-            "member": "ubuntu-username",
-            "data_date_start": "2024-01-01",
-            "data_date_end": "2024-03-31",
-
-            "source_kind_id": "launchpad",
-            "event_type": "bugs"  # Routes to @extract_method("launchpad-bugs")
-        }
-    )
-
-    # Start workflow
-    handle = await client.start_workflow(
-        workflow=ETLFlow.run,
-        args=(flow_input,),
-        id=f"etl-{flow_input.args['member']}-{flow_input.args['data_date_start']}",
-        task_queue=ETLFlow.queue_name,
-    )
-    
-    # Wait for completion and get result
-    result = await handle.result()
-    print(f"Processed {result.get('items_processed', 0)} events")
-    print(f"Inserted {result.get('items_inserted', 0)} events into database")
-
-# Run the workflow
-asyncio.run(run_etl_workflow())
+ls sources/github/flows/
+# issues.py  pull_requests.py
 ```
+
+## 🚀 Creating New Sources with `new.py`
+
+The quickest way to start working on a new data source is using the automated `scripts/new.py` tool. This script handles all the boilerplate code generation and ensures your new source follows the proper structure and decorator patterns.
+
+### Quick Start
+
+```bash
+# Create a new source with default flow
+python scripts/new.py github
+
+# Create a source with multiple flows  
+python scripts/new.py github issues pull_requests releases
+
+# Create a sample source for learning
+python scripts/new.py sample_source sample_flow
+```
+
+### What Gets Created
+
+The script automatically generates:
+
+1. **Source Directory Structure**: `sources/[source_name]/`
+2. **Query Class**: `query.py` with `@query_type()` decorator
+3. **Flow Files**: `flows/[flow_name].py` with `@extract_method()` decorators
+4. **Proper Imports**: All required imports and base class inheritance
+5. **Method Stubs**: Required methods ready for implementation
+
+### Example: Creating a GitHub Source
+
+```bash
+# Generate the GitHub source structure
+python scripts/new.py github issues pull_requests
+
+# This creates:
+# sources/github/query.py - GithubQuery with @query_type("github")
+# sources/github/flows/issues.py - extract_data with @extract_method("github-issues")  
+# sources/github/flows/pull_requests.py - extract_data with @extract_method("github-pull_requests")
+```
+
+### Smart Validation
+
+The script also validates existing sources:
+
+- ✅ **Checks existing files** for required structure
+- 🔄 **Creates backups** before modifying existing files
+- 🛠️ **Fixes missing imports** and decorators automatically
+- 📝 **Reports what needs attention** in existing implementations
+
+### Next Steps After Generation
+
+1. **Implement the query logic** in `sources/[source]/query.py`
+2. **Add extraction logic** in `sources/[source]/flows/[flow].py` files
+3. **Add dependencies** to `requirements.txt` if needed
+4. **Test your new source** using the standard workflow patterns
+
+The generated files follow all the decorator-based patterns and will be automatically discovered by the system's factory classes.
 
 ## 🔧 Configuration
 
@@ -328,9 +365,11 @@ DB_NAME=workflows-db
 DB_USER=workflows-db
 DB_PASSWORD=workflows-db
 
+# Database Connection Pool Settings
 DB_MIN_CONN=1
 DB_MAX_CONN=20
 
+# Database Schema Configuration
 EVENTS_TABLE=events
 ```
 
@@ -339,9 +378,9 @@ EVENTS_TABLE=events
 The `docker-compose.yml` defines the complete infrastructure:
 
 - **temporal-db** (`localhost:5432`): PostgreSQL database for Temporal server
-- **workflows-db** (`localhost:7000`): PostgreSQL database for application events
-- **temporal** (`localhost:7233`): Temporal server with auto-setup
-- **temporal-ui** (`localhost:8080`): Web interface for workflow monitoring
+- **workflows-db** (`localhost:7000`): PostgreSQL database for application events  
+- **temporal** (`localhost:7233`): Temporal server with auto-setup using temporalio/auto-setup:1.21.0
+- **temporal-ui** (`localhost:8080`): Web interface for workflow monitoring using temporalio/ui:2.17.0
 
 ### Temporal Server Configuration
 
@@ -390,16 +429,16 @@ CREATE TABLE IF NOT EXISTS events (
 
 ### Field Descriptions
 - **`id`**: Auto-incrementing primary key
-- **`source_kind_id`**: Data source identifier (e.g., "launchpad")
+- **`source_kind_id`**: Data source identifier (e.g., "launchpad", "github")
 - **`parent_item_id`**: Parent entity ID (bug ID, merge proposal ID, etc.)
 - **`event_id`**: Unique event identifier across all sources
 - **`event_type`**: Type of event (e.g., "bugs", "merge_proposals", "questions")
 - **`relation_type`**: Specific action type (e.g., "created", "approved", "answered")
 - **`employee_id`**: Unique identifier for the user/developer
 - **`event_time_utc`**: Event timestamp in UTC
-- **`week`**: Monday date of the week when event occurred
-- **`timezone`**: User's timezone
-- **`event_time`**: Event timestamp in user's timezone
+- **`week`**: Monday date of the week when event occurred (auto-calculated)
+- **`timezone`**: User's timezone (defaults to 'UTC')
+- **`event_time`**: Event timestamp in user's timezone (auto-calculated)
 - **`event_properties`**: JSONB field for event-specific metadata
 - **`relation_properties`**: JSONB field for action-specific metadata
 - **`metrics`**: JSONB field for quantitative measurements
@@ -409,82 +448,84 @@ The database layer uses PostgreSQL connection pooling for optimal performance:
 
 - **Thread-safe singleton pattern** with double-checked locking for initialization
 - **Configurable pool size** via environment variables (`DB_MIN_CONN`, `DB_MAX_CONN`)
-- **Health checks** with automatic connection recovery
+- **Health checks** with automatic connection recovery and reconnection
+- **Connection validation** using `_is_connection_healthy()` method
+- **Pool recreation** with `_recreate_pool()` for handling corrupted pools
 - **Batch processing** for efficient bulk inserts with configurable batch sizes
-- **Exponential backoff** for retry logic on connection failures
-- **Automatic schema creation** during initialization
+- **Exponential backoff** for retry logic on connection failures and batch operations
+- **Automatic schema creation** during initialization with proper SQL injection protection
+- **Context manager support** for proper resource cleanup
+- **Pool status monitoring** with `get_pool_status()` for observability
 
 ## 🔄 Extending the System
 
-### 🚀 Quick Start: Automated Source Creation
+### 🚀 Quick Start: Creating New Data Sources with `new.py`
 
-The fastest and safest way to extend the system is using the automated source creation script:
+The preferred way to create new data sources is using the automated `new.py` script, which generates the proper structure and ensures compliance with the system's decorator-based architecture:
 
 ```bash
-# Create a new source with default settings
+# Create a new source with default structure
+python scripts/new.py github
+
+# Create a source with multiple flows
+python scripts/new.py github issues pull_requests
+
+# Create a sample source for learning (default)
 python scripts/new.py
-
-# Create a specific source with multiple flows
-python scripts/new.py github issues pull_requests releases
-
-# Validate and update existing sources
-python scripts/new.py launchpad bugs merge_proposals
 ```
 
-**The script automatically:**
-- ✅ Creates proper directory structure
-- ✅ Generates template files with correct imports and decorators
-- ✅ Validates existing sources for required structure
-- ✅ Creates backup files before making changes
-- ✅ Ensures all required methods and decorators are present
+**What the script creates:**
+- ✅ **Proper directory structure** under `sources/[source_name]/`
+- ✅ **Query class** with `@query_type()` decorator and required methods
+- ✅ **Flow files** with `@extract_method()` decorators and correct signatures
+- ✅ **Validation** of existing sources and automatic structure fixes
+- ✅ **Backup creation** before overwriting existing files
 
-**Why use the script?**
-- Ensures proper imports and structure
-- Validates existing code
-- Creates backups before changes
-- Follows consistent naming conventions
-- Reduces human error
+### Script Features
 
-#### Generated Structure
+The `new.py` script provides intelligent source management:
 
-For `python scripts/new.py github issues pull_requests`:
-
-```
-github/
-├── __init__.py
-├── query.py                    # GithubQuery class with @query_type("github")
-└── flows/
-    ├── __init__.py
-    ├── issues.py              # @extract_method("github-issues")
-    └── pull_requests.py       # @extract_method("github-pull_requests")
+**For New Sources:**
+```bash
+python scripts/new.py github issues
+# Creates:
+# sources/github/query.py - GithubQuery class with @query_type("github")
+# sources/github/flows/issues.py - extract_data with @extract_method("github-issues")
 ```
 
-#### What Gets Validated
-
-**Query Files (`{source}/query.py`):**
-- Required imports: `dataclasses`, `typing`, `models.query`
-- `@query_type("{source}")` decorator
-- Class inherits from `Query`
-- Has `from_dict()` static method
-- Has `to_summary_base()` method
-
-**Flow Files (`{source}/flows/{flow}.py`):**
-- Required imports: `typing`, `{source}.query`, `models.extract_cmd`
-- `@extract_method(name="{source}-{flow}")` decorator
-- Correct function signature: `extract_data(query: {Source}Query) -> List[Dict[str, Any]]`
+**For Existing Sources:**
+```bash
+python scripts/new.py github pull_requests  # Adds new flow to existing source
+# Validates existing structure and creates missing components
+# Creates backups before any modifications
+```
 
 ### Adding New Data Sources
 
-### Manual Implementation (After Script Generation)
+After running the script, you'll need to implement two main components:
 
-After using `python scripts/new.py source_name flows...`, customize the generated templates:
+1. **Query Class**: Defines how to structure and validate query parameters for your data source
+2. **Extract Method**: Implements the actual data extraction logic
 
-1. **Implement the Query Class**:
+### Implementation Steps
+
+Follow this workflow to add a new data source:
+
+1. **Generate the source structure**:
+```bash
+# Create your new source with the flows you need
+python scripts/new.py github issues pull_requests
+```
+
+2. **Implement the Query Class**:
+
+Edit the generated `sources/github/query.py`:
+
 ```python
-# In source/query.py (generated by script, customize as needed)
+# The script creates this structure - you just need to implement the methods
 from dataclasses import dataclass
 from typing import Dict, Any
-from models.query import Query, query_type
+from models.etl.query import Query, query_type
 
 @dataclass
 @query_type("github")  # Auto-registered via decorator
@@ -520,12 +561,15 @@ class GithubQuery(Query):
         }
 ```
 
-2. **Implement the Extraction Method**:
+3. **Implement the Extraction Methods**:
+
+Edit the generated `sources/github/flows/issues.py`:
+
 ```python
-# In source/flows/issues.py (generated by script, customize as needed)
+# The script creates this structure - you just need to implement extract_data
 from typing import List, Dict, Any
 from github.query import GithubQuery
-from models.extract_cmd import extract_method
+from models.etl.extract_cmd import extract_method
 import logging
 
 logger = logging.getLogger(__name__)
@@ -559,115 +603,42 @@ async def extract_data(query: GithubQuery) -> List[Dict[str, Any]]:
     return events
 ```
 
-3. **Use the New Source in Workflows**:
+4. **Use the New Source in Workflows**:
 ```python
 # The source is automatically registered - just use it!
-flow_input = FlowInput(
+flow_input = ETLFlowInput(
     query_type="github",  # Routes to GithubQuery via @query_type("github")
+    extract_strategy="github-issues",  # Routes to github-issues via @extract_method
     args={
         "api_token": "your-github-token",
         "repository": "owner/repo-name",
         "since_date": "2024-01-01",
         "source_kind_id": "github",
-        "event_type": "issues"  # Routes to github-issues via @extract_method
+        "event_type": "issues"
     }
 )
 ```
 
-### 🔍 Validation and Maintenance
+### 📋 Current Implementation Status
 
-The `scripts/new.py` tool also serves as a validation and maintenance utility:
+**✅ Fully Implemented:**
+- 🤖 **Automated Source Generation**: `scripts/new.py` for creating and validating new data sources
+- Temporal-based ETL orchestration with robust error handling
+- Dual processing modes: Standard `ETLFlow` and memory-efficient `StreamingETLFlow`
+- Decorator-based auto-discovery of query types and extraction methods
+- Modular worker system (`ETLWorker` and `StreamingETLWorker`)
+- Thread-safe PostgreSQL database layer with connection pooling
+- Memory monitoring and backpressure handling for streaming workflows
+- Launchpad data extraction (bugs, merge proposals, questions)
+- Comprehensive Docker-based development environment
+- Real-time workflow monitoring via Temporal Web UI
 
-```bash
-# Validate existing sources and fix any issues
-python scripts/new.py launchpad bugs merge_proposals questions
+**� Streamlined Development Workflow:**
+- Use `python scripts/new.py [source] [flows...]` to generate proper structure
+- Implement business logic in the generated skeleton files
+- Automatic validation and structure checking for existing sources
+- Backup creation before any modifications
 
-# Add new flows to existing sources  
-python scripts/new.py github releases deployments
-
-# Check if a source needs updates (safe - creates backups)
-python scripts/new.py my_existing_source
-```
-
-**What happens during validation:**
-- ✅ **Existing valid files**: Left untouched
-- ⚠️ **Missing imports/decorators**: Fixed with backup created  
-- 📁 **Missing directories**: Created automatically
-- 📄 **Missing files**: Generated from templates
-- 🔄 **Broken structure**: Rebuilt with original backed up
-
-### Adding New Query Types
-
-**Recommended approach using the script:**
-
-**Recommended approach using the script:**
-
-1. **Generate the structure**:
-```bash
-python scripts/new.py custom_api data sync metrics
-```
-
-2. **The script creates everything you need** - just customize the generated templates in `custom_api/query.py` and the flow files.
-
-### 📋 Development Workflow
-
-1. **Plan your data source**: Identify what data you want to extract and how it maps to events
-2. **Generate structure**: `python scripts/new.py your_source flow1 flow2`
-3. **Implement query logic**: Customize the generated `query.py` with your API parameters
-4. **Implement extraction**: Customize the generated flow files with your data extraction logic
-5. **Test locally**: Use the worker and test runners to validate your implementation
-6. **Monitor in Temporal UI**: View workflow execution at http://localhost:8080
-
-### Best Practices for Extensions
-
-#### 🏗️ **Development Process**
-- **Use the automation script**: Always start with `python scripts/new.py` for consistent structure
-- **Follow naming conventions**: Use snake_case for source names and flow names
-- **Validate regularly**: Run the script on existing sources to catch structural issues
-- **Check backups**: Review `.backup` files if the script modifies existing code
-
-#### 🔧 **Implementation Guidelines**
-- **Error Handling**: Use Temporal's retry policies and handle transient failures gracefully
-- **Rate Limiting**: Implement appropriate delays for API calls to avoid rate limits  
-- **Idempotency**: Ensure activities can be safely retried without side effects
-- **Batch Processing**: Use the configurable `ETLFlow.BATCH_SIZE` for efficient database operations
-- **Logging**: Use structured logging for better observability
-- **Schema Validation**: Validate event data structure before database insertion
-
-#### 🏛️ **Architecture Guidelines**
-- **Connection Pooling**: Leverage the existing PostgreSQL connection pool for database operations
-- **Decorator Registration**: Use `@query_type()` and `@extract_method()` decorators for automatic component discovery
-- **Module Organization**: Place extraction methods in `flows/` subdirectories and query classes in `query.py` files for auto-discovery
-- **Type Hints**: Use proper type annotations for better IDE support and code clarity
-
-#### 🧪 **Testing and Validation**
-```bash
-# Validate your source structure
-python scripts/new.py your_source
-
-# Test your implementation
-python worker.py  # In one terminal
-python your_test_runner.py  # In another terminal
-
-# Monitor execution
-# Visit http://localhost:8080 for Temporal Web UI
-```
-
-#### 📋 **Quick Reference**
-
-| Task | Command | Result |
-|------|---------|---------|
-| Create new source | `python scripts/new.py github issues pulls` | Creates `github/` with 2 flows |
-| Validate existing | `python scripts/new.py launchpad bugs` | Checks/fixes launchpad structure |
-| Add flows | `python scripts/new.py existing_source new_flow` | Adds new flow to existing source |
-| Help | `python scripts/new.py -h` | Shows usage examples |
-
-**Generated Files:**
-- `{source}/query.py` - Query class with proper decorators and methods
-- `{source}/flows/{flow}.py` - Extract method with correct signature
-- `{source}/__init__.py` and `{source}/flows/__init__.py` - Package markers
-
-**Auto-Discovery:** All sources and flows are automatically registered via decorators - no manual registration required!
 
 ## 📚 Additional Resources
 - **[Temporal Documentation](https://docs.temporal.io/)** - Complete guide to Temporal workflows and activities

@@ -46,7 +46,7 @@ def check_and_ensure_query_file(source_dir: Path, source_name: str) -> None:
     required_imports = [
         "from dataclasses import dataclass",
         "from typing import Dict, Any",
-        "from models.query import Query, query_type"
+        "from models.etl.query import Query, query_type"
     ]
     
     missing_imports = []
@@ -108,7 +108,7 @@ def check_and_ensure_flow_file(flows_dir: Path, source_name: str, flow_name: str
     required_imports = [
         "from typing import List, Dict, Any",
         f"from {source_name}.query import {source_name_pascal}Query",
-        "from models.extract_cmd import extract_method"
+        "from models.etl.extract_cmd import extract_method"
     ]
     
     missing_imports = []
@@ -153,7 +153,7 @@ def create_query_file(source_dir: Path, source_name: str) -> None:
     query_content = f'''from dataclasses import dataclass
 from typing import Dict, Any
 
-from models.query import Query, query_type
+from models.etl.query import Query, query_type
 
 
 @dataclass
@@ -185,7 +185,7 @@ def create_flow_file(flows_dir: Path, source_name: str, flow_name: str) -> None:
     flow_content = f'''from typing import List, Dict, Any
 
 from {source_name}.query import {source_name_pascal}Query
-from models.extract_cmd import extract_method
+from models.etl.extract_cmd import extract_method
 
 import logging
 
@@ -243,7 +243,7 @@ Examples:
     project_root = Path.cwd()
     
     # Handle source directory
-    source_dir = project_root / source_name
+    source_dir = project_root / "sources" / source_name
     source_exists = source_dir.exists()
     
     if source_exists:
