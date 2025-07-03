@@ -1,7 +1,6 @@
 from contextlib import contextmanager
 
 import logging
-import os
 import threading
 import time
 from typing import List, Optional
@@ -9,6 +8,8 @@ from typing import List, Optional
 import psycopg2.extras
 import psycopg2.pool
 from psycopg2 import sql
+
+from db.configuration import DatabaseConfiguration, TABLE_NAME
 
 from models.event import Event
 
@@ -23,17 +24,9 @@ class Database:
     Thread-safe singleton database manager for event storage using PostgreSQL.
     Designed for high-concurrency temporal workflows with connection pooling
     and automatic reconnection handling.
-    
-    Environment Variables:
-        DB_HOST: PostgreSQL host (default: localhost)
-        DB_PORT: PostgreSQL port (default: 5432) 
-        DB_NAME: Database name (default: launchpad_events)
-        DB_USER: Database user (default: postgres)
-        DB_PASSWORD: Database password (required)
-        DB_MIN_CONN: Minimum connections in pool (default: 1)
-        DB_MAX_CONN: Maximum connections in pool (default: 20)
     """
     
+    _config: DatabaseConfiguration
     _instance: Optional["Database"] = None
     _lock = threading.Lock()
     _initialized = False
@@ -59,6 +52,7 @@ class Database:
             with Database._lock:
                 if not Database._initialized:
                     self._pool_lock = threading.Lock()
+                    self._config = DatabaseConfiguration()
                     self._init_database()
                     Database._initialized = True
 
@@ -69,27 +63,11 @@ class Database:
         Connection parameters can be configured via environment variables.
         Creates a threaded connection pool for better concurrency handling.
         """
-        # Get database connection parameters from environment
-        db_host = os.getenv('DB_HOST', 'localhost')
-        db_port = os.getenv('DB_PORT', '7000')
-        db_name = os.getenv('DB_NAME', 'workflows-db')
-        db_user = os.getenv('DB_USER', 'workflows-db')
-        db_password = os.getenv('DB_PASSWORD', 'workflows-db')
-        
-        min_conn = int(os.getenv('DB_MIN_CONN', '1'))
-        max_conn = int(os.getenv('DB_MAX_CONN', '20'))
-        
-        if not db_password:
-            raise ValueError("DB_PASSWORD environment variable is required for PostgreSQL connection")
-        
-        # Create connection string
-        self.connection_string = f"host={db_host} port={db_port} dbname={db_name} user={db_user} password={db_password}"
-        
         # Initialize connection pool
         try:
             self.pool = psycopg2.pool.ThreadedConnectionPool(
-                min_conn, max_conn,
-                self.connection_string,
+                self._config.min_conn, self._config.max_conn,
+                self._config.connection_string,
                 cursor_factory=psycopg2.extras.RealDictCursor
             )
         except Exception as e:
@@ -105,9 +83,8 @@ class Database:
         """
         import re
         
-        self.schema_name = os.getenv('EVENTS_TABLE', 'launchpad_events')
-        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', self.schema_name):
-            raise ValueError(f"Invalid table name: {self.schema_name}")
+        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', TABLE_NAME):
+            raise ValueError(f"Invalid table name: {TABLE_NAME}")
         
         logger.info(f"Ensuring schema exists in the database")
         with self.get_connection() as conn:
@@ -136,7 +113,7 @@ class Database:
                                 relation_properties JSONB,
                                 metrics JSONB
                             )
-                        """).format(sql.Identifier(self.schema_name)))
+                        """).format(sql.Identifier(TABLE_NAME)))
                 conn.commit()
             except Exception as e:
                 conn.rollback()
@@ -243,12 +220,9 @@ class Database:
         except:
             pass  # Ignore errors when closing old pool
         
-        min_conn = int(os.getenv('DB_MIN_CONN', '1'))
-        max_conn = int(os.getenv('DB_MAX_CONN', '20'))
-        
         self.pool = psycopg2.pool.ThreadedConnectionPool(
-            min_conn, max_conn,
-            self.connection_string,
+            self._config.min_conn, self._config.max_conn,
+            self._config.connection_string,
             cursor_factory=psycopg2.extras.RealDictCursor
         )
 
@@ -306,7 +280,7 @@ class Database:
                     VALUES %s
                     ON CONFLICT (event_id) DO NOTHING
                     RETURNING id
-                """).format(sql.Identifier(self.schema_name))
+                """).format(sql.Identifier(TABLE_NAME))
 
                 values = [(
                     e.source_kind_id, 
@@ -336,7 +310,7 @@ class Database:
                     SET event_properties = data.event_properties::jsonb
                     FROM (VALUES %s) AS data(parent_item_id, event_properties)
                     WHERE {}.parent_item_id = data.parent_item_id
-                """).format(sql.Identifier(self.schema_name), sql.Identifier(self.schema_name))
+                """).format(sql.Identifier(TABLE_NAME), sql.Identifier(TABLE_NAME))
                 
                 update_values = [
                     (parent_id, psycopg2.extras.Json(props))

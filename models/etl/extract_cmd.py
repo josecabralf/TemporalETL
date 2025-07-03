@@ -41,7 +41,6 @@ class ExtractStrategy:
         """Find project root by looking for marker files."""
         current = Path(__file__).resolve()
         for parent in [current] + list(current.parents):
-            print("Checking parent:", parent)
             if any((parent / marker).exists() for marker in marker_files):
                 return parent
         return current.parent  # Fallback

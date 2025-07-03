@@ -3,6 +3,7 @@ from importlib import import_module
 import logging
 import os
 from typing import Dict, Any, Type
+from pathlib import Path
 
 
 # Configure logging
@@ -91,7 +92,25 @@ class QueryFactory:
     Factory class for creating query instances dynamically based on type identifiers.
     Uses decorator-based registration for automatic discovery of query types.
     """
+    _project_root = None
     _modules_imported = False
+
+    @staticmethod
+    def _find_project_root(marker_files=('.project-root', 'pyproject.toml', 'setup.py', '.git')):
+        """
+        Find the project root directory by looking for specific marker files.
+        
+        Args:
+            marker_files: List of filenames that indicate the project root
+            
+        Returns:
+            Path to the project root directory
+        """
+        current = Path(__file__).resolve()
+        for parent in [current] + list(current.parents):
+            if any((parent / marker).exists() for marker in marker_files):
+                return parent
+        return current.parent
 
     @staticmethod
     def _discover_query_directories():
@@ -101,8 +120,7 @@ class QueryFactory:
         Returns:
             List of directory paths that might contain query modules
         """
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        sources_path = os.path.join(project_root, 'sources')
+        sources_path = os.path.join(QueryFactory._project_root, 'sources') # type: ignore
         logger.info("Discovering query directories in sources path: %s", sources_path)
         query_directories = []
         
@@ -133,7 +151,10 @@ class QueryFactory:
         """Auto-discover and import all query modules to trigger decorator registration."""
         if QueryFactory._modules_imported:
             return
-            
+        
+        if not QueryFactory._project_root:
+            QueryFactory._project_root = QueryFactory._find_project_root()
+
         # Dynamically discover query directories
         query_directories = QueryFactory._discover_query_directories()
         
