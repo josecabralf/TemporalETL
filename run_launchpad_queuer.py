@@ -40,9 +40,9 @@ EVENT_TYPES = [
 ]
 
 EVENTS_AND_STRATS = {
-    "bugs": f"launchpad-bugs",
-    "merge_proposals": f"launchpad-merge_proposals",
-    "questions": f"launchpad-questions",
+    "bugs": "launchpad-bugs",
+    "merge_proposals": "launchpad-merge_proposals",
+    "questions": "launchpad-questions",
 }
 
 

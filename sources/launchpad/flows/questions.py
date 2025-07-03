@@ -35,7 +35,7 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
         return []  # Member does not exist, return empty list
     except Exception as e:
         raise ValueError(
-            f"Error fetching member %s: %s", query.member, e
+            "Error fetching member %s: %s", query.member, e
         )  # Handle other exceptions
 
     questions = person.searchQuestions(participation="Owner")
@@ -98,7 +98,6 @@ async def extract_data_streaming(
         tzinfo=pytz.UTC
     )
     time_zone = person.time_zone
-    person_link = person.self_link
 
     # Process questions in truly streaming fashion - yield each chunk as it's processed
     chunk_count = 0

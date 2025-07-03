@@ -47,7 +47,7 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
         return []  # Member does not exist, return empty list
     except Exception as e:
         raise ValueError(
-            f"Error fetching member %s: %s", query.member, e
+            "Error fetching member %s: %s", query.member, e
         )  # Handle other exceptions
 
     if not person:

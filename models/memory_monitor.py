@@ -123,7 +123,7 @@ def monitor_memory_usage(func):
             monitor.take_snapshot("end")
             monitor.log_final_stats()
             return result
-        except Exception as e:
+        except Exception:
             monitor.take_snapshot("error")
             monitor.log_final_stats()
             raise
@@ -143,7 +143,7 @@ async def monitor_memory_usage_async(func):
             monitor.take_snapshot("end")
             monitor.log_final_stats()
             return result
-        except Exception as e:
+        except Exception:
             monitor.take_snapshot("error")
             monitor.log_final_stats()
             raise

@@ -1,6 +1,6 @@
 import logging
 from datetime import timedelta
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 from temporalio import activity, workflow
 

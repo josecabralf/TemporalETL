@@ -1,5 +1,4 @@
 import logging
-from typing import Type
 
 from temporalio.worker import Worker
 from temporalio.client import Client

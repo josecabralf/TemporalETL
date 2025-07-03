@@ -8,7 +8,7 @@ large datasets with better memory efficiency.
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from temporalio.client import Client
 from temporalio.worker import Worker

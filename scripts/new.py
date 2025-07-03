@@ -18,8 +18,6 @@ Features:
     - Handles both new and existing flows
 """
 
-import os
-import sys
 import argparse
 import re
 from pathlib import Path
@@ -145,7 +143,7 @@ def check_and_ensure_flow_file(
                 f"   Missing @extract_method(name='{source_name}-{flow_name}') decorator"
             )
         if not has_function:
-            print(f"   Missing extract_data function with correct signature")
+            print("   Missing extract_data function with correct signature")
 
         # Create a backup and recreate the file
         backup_file = flow_file.with_suffix(".py.backup")
@@ -287,19 +285,19 @@ Examples:
     print(f"📁 Source directory: {source_dir}")
 
     if not source_exists:
-        print(f"🆕 New source created with files:")
+        print("🆕 New source created with files:")
         print(f"   - {source_dir}/query.py")
         for flow in flows:
             print(f"   - {source_dir}/flows/{flow}.py")
 
-        print(f"\n🚀 Next steps:")
+        print("\n🚀 Next steps:")
         print(f"   1. Implement the query logic in {source_dir}/query.py")
-        print(f"   2. Implement the extraction logic in the flow files")
-        print(f"   3. Add any required dependencies to requirements.txt")
+        print("   2. Implement the extraction logic in the flow files")
+        print("   3. Add any required dependencies to requirements.txt")
     else:
-        print(f"🔄 Existing source validated and updated as needed")
+        print("🔄 Existing source validated and updated as needed")
         print(
-            f"\n💡 Tip: Check backup files (.backup) if any important code was overwritten"
+            "\n💡 Tip: Check backup files (.backup) if any important code was overwritten"
         )
 
 
