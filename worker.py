@@ -3,13 +3,14 @@ import asyncio
 from temporalio.client import Client
 from models.etl.worker import ETLWorker
 
+
 async def main():
     # Connect to local Temporal service
     client = await Client.connect(TEMPORAL_HOST)
-    
+
     # Create worker - this needs to be done in async context
     worker = ETLWorker(client)
-    
+
     # Run the worker
     await worker.run()
 

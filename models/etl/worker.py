@@ -17,11 +17,11 @@ class ETLWorker:
     """
     Manager class for Temporal worker lifecycle in ETL operations.
     """
-    
+
     def __init__(self, client: Client) -> None:
         """
         Initialize the ETL worker manager.
-        
+
         Args:
             client: Connected Temporal client for server communication
         """
@@ -46,11 +46,11 @@ class StreamingETLWorker:
     """
     Manager class for Temporal worker lifecycle in streaming ETL operations.
     """
-    
+
     def __init__(self, client: Client) -> None:
         """
         Initialize the streaming ETL worker manager.
-        
+
         Args:
             client: Connected Temporal client for server communication
         """
@@ -61,7 +61,7 @@ class StreamingETLWorker:
             workflows=[StreamingETLFlow],
             activities=StreamingETLFlow.get_activities(),
         )
-    
+
     async def run(self):
         """
         Start the worker to process streaming ETL workflows from the task queue.

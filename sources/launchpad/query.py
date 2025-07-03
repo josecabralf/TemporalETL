@@ -10,6 +10,7 @@ class LaunchpadQuery(Query):
     """
     Query implementation for Launchpad API data extraction.
     """
+
     application_name: str
     service_root: str
     version: str
@@ -17,19 +18,20 @@ class LaunchpadQuery(Query):
     data_date_start: str
     data_date_end: str
 
-    def __init__(self, 
-                 application_name: str,
-                 service_root: str,
-                 version: str,
-                 member: str,
-                 data_date_start: str,
-                 data_date_end: str,
-                 source_kind_id: str,
-                 event_type: str
-                 ) -> None:
+    def __init__(
+        self,
+        application_name: str,
+        service_root: str,
+        version: str,
+        member: str,
+        data_date_start: str,
+        data_date_end: str,
+        source_kind_id: str,
+        event_type: str,
+    ) -> None:
         """
         Initialize LaunchpadQuery with connection and scope parameters.
-        
+
         Args:
             application_name: Application identifier for Launchpad API access
             service_root: Target Launchpad environment (typically "production")
@@ -50,12 +52,12 @@ class LaunchpadQuery(Query):
     def from_dict(data: Dict[str, Any]) -> "LaunchpadQuery":
         """
         Create a LaunchpadQuery instance from a dictionary of parameters.
-        
+
         Args:
             data: Dictionary containing Launchpad query parameters
                  Expected keys: application_name, service_root, version,
                                 member, data_date_start, data_date_end, event_type
-                 
+
         Returns:
             Configured LaunchpadQuery instance ready for use
         """
@@ -67,13 +69,13 @@ class LaunchpadQuery(Query):
             data_date_start=data.get("data_date_start", ""),
             data_date_end=data.get("data_date_end", ""),
             source_kind_id="launchpad",
-            event_type=data.get("event_type", "")
+            event_type=data.get("event_type", ""),
         )
 
     def to_summary_base(self) -> Dict[str, Any]:
         """
         Generate a summary dictionary for logging and monitoring purposes.
-        
+
         Returns:
             Dictionary containing key query information for summary reporting
         """

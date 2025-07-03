@@ -23,9 +23,8 @@ def get_insert_events_query(table_name: str):
         VALUES %s
         ON CONFLICT (event_id) DO NOTHING
         RETURNING id
-    """).format(
-            sql.Identifier(table_name)
-        )
+    """).format(sql.Identifier(table_name))
+
 
 def get_create_events_table_query(table_name: str):
     """Generate the SQL query for creating the specified table."""
@@ -50,9 +49,8 @@ def get_create_events_table_query(table_name: str):
             relation_properties JSONB,
             metrics JSONB
         );
-    """).format(
-        sql.Identifier(table_name)
-    )
+    """).format(sql.Identifier(table_name))
+
 
 def get_update_events_parents_query(table_name: str):
     """Generate the SQL query for updating parent event properties."""
@@ -61,7 +59,4 @@ def get_update_events_parents_query(table_name: str):
         SET event_properties = data.event_properties::jsonb
         FROM (VALUES %s) AS data(parent_item_id, event_properties)
         WHERE {}.parent_item_id = data.parent_item_id
-    """).format(
-        sql.Identifier(table_name), 
-        sql.Identifier(table_name)
-    )
+    """).format(sql.Identifier(table_name), sql.Identifier(table_name))
