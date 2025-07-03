@@ -1,0 +1,66 @@
+name: etl-worker
+summary:  ETL temporal worker app
+description: OCI image for ETL temporal worker app
+version: "0.1"
+run-user: _daemon_
+base: ubuntu@24.04
+platforms:
+  amd64:
+
+services:
+  temporal-worker:
+    user: _daemon_
+    override: replace
+    startup: disabled
+    command: "./app/scripts/start-worker.sh"
+    environment:
+      TEMPORAL_HOST: localhost:7233
+      TEMPORAL_NAMESPACE: default
+
+      DB_HOST: localhost
+      DB_PORT: 7000
+      DB_NAME: workflows-db
+      DB_USER: workflows-db
+      DB_PASSWORD: workflows-db
+
+      DB_EVENTS_TABLE: launchpad_events
+
+parts:
+  worker-dependencies:
+    plugin: uv
+    source: .
+    source-type: local
+    build-snaps:
+      - astral-uv
+    stage-packages:
+      - python3-venv
+
+  add-ca-certificates:
+    # This installs ca-certificates in the build env to populate our /etc/ssl/certs,
+    # then copies just the ca-certificates.crt to the final image
+    plugin: nil
+    build-packages:
+      - ca-certificates
+    override-build: |-
+      mkdir -p $CRAFT_PART_INSTALL/etc/ssl/certs/
+      cp /etc/ssl/certs/ca-certificates.crt $CRAFT_PART_INSTALL/etc/ssl/certs/ca-certificates.crt
+
+  worker-app:
+    plugin: dump
+    source: .
+    source-type: local
+    overlay-packages:
+      - ca-certificates
+      - coreutils
+      - curl
+      - bash
+    override-pull: |
+      craftctl default
+      # Ignored files/directories
+      rm -rf rockcraft.yaml .env.local .gitignore .git README.md
+      # Make the start script executable
+      chmod +x scripts/start-worker.sh
+    organize:
+      "*": /app/
+    prime:
+      - app

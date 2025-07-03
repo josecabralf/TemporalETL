@@ -11,7 +11,6 @@ import logging
 from datetime import datetime
 
 from temporalio.client import Client
-from temporalio.worker import Worker
 
 from models.etl.streaming_etl_flow import StreamingETLFlow, StreamingConfig
 from models.etl.flow_input import ETLFlowInput
@@ -22,25 +21,6 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-
-async def run_streaming_worker():
-    """Run the streaming ETL worker."""
-    # Connect to Temporal
-    client = await Client.connect("localhost:7233")
-
-    # Create worker for streaming ETL
-    worker = Worker(
-        client,
-        task_queue=StreamingETLFlow.queue_name,
-        workflows=[StreamingETLFlow],
-        activities=StreamingETLFlow.get_activities(),
-    )
-
-    logger.info(
-        f"Starting streaming ETL worker on queue: {StreamingETLFlow.queue_name}"
-    )
-    await worker.run()
 
 
 async def run_bugs_streaming_workflow_example():
@@ -175,9 +155,7 @@ async def main():
     """Main function to run worker or example workflows."""
     import sys
 
-    if len(sys.argv) > 1 and sys.argv[1] == "worker":
-        await run_streaming_worker()
-    elif len(sys.argv) > 1 and sys.argv[1] == "bugs":
+    if len(sys.argv) > 1 and sys.argv[1] == "bugs":
         await run_bugs_streaming_workflow_example()
     elif len(sys.argv) > 1 and sys.argv[1] == "questions":
         await run_questions_streaming_example()
