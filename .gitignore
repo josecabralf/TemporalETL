@@ -197,3 +197,7 @@ cython_debug/
 # Launchpadlib
 *.ipynb
 devel/
+
+# Charming
+*.rock
+*.charm

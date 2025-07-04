@@ -3,10 +3,10 @@
 version: "3"
 
 vars:
-  ROCK_NAME: example-temporal-worker_0.1_amd64.rock
-  IMAGE_NAME: example-temporal-worker-rock:latest
-  CONTAINER_NAME: example-temporal-worker
-  APP_NAME: example-temporal-worker
+  ROCK_NAME: etl-worker_0.1_amd64.rock
+  IMAGE_NAME: etl-worker-rock:latest
+  CONTAINER_NAME: etl-temporal-worker
+  APP_NAME: etl-temporal-worker
   QUEUE_NAME: example-workflow-queue
 
 tasks:
@@ -46,46 +46,46 @@ tasks:
     cmds:
       - python -m worker -s
 
-  # start-workflow:
-  #   desc: Start a "Fake Replicate" Workflow
-  #   cmds:
-  #     - uv run python -m temporal_worker.python_scripts.start_workflow
-
   pack:
     desc: Pack the rock
     cmds:
       - rockcraft pack -v
 
-  # load-image-local:
-  #   desc: Load the .rock image into local docker registry
-  #   cmds:
-  #     - |
-  #       rockcraft.skopeo --insecure-policy copy oci-archive:{{.ROCK_NAME}} \
-  #         docker-daemon:{{.IMAGE_NAME}}
+  load-image-local:
+    desc: Load the .rock image into local docker registry
+    cmds:
+      - |
+        rockcraft.skopeo --insecure-policy copy oci-archive:{{.ROCK_NAME}} \
+          docker-daemon:{{.IMAGE_NAME}}
 
-  # docker-run:
-  #   desc: Run the rock image (with --network set to host)
+  # start-workflow:
+  #   desc: Start a "Fake Replicate" Workflow
   #   cmds:
-  #     - docker run --rm -d --name {{.CONTAINER_NAME}} --network host {{.IMAGE_NAME}}
+  #     - uv run python -m temporal_worker.python_scripts.start_workflow
 
-  # docker-exec:
-  #   desc: Exec into the running container
-  #   cmds:
-  #     - docker exec -it {{.CONTAINER_NAME}} bash
+  docker-run:
+    desc: Run the rock image (with --network set to host)
+    cmds:
+      - docker run --rm -d --name {{.CONTAINER_NAME}} --network host {{.IMAGE_NAME}}
 
-  # docker-cleanup:
-  #   desc: Cleanup docker container and image
-  #   cmds:
-  #     - docker stop {{.CONTAINER_NAME}} || echo "Container not running or doesn't exist"
-  #     - docker rmi {{.IMAGE_NAME}} || echo "Image already removed or doesn't exist"
+  docker-exec:
+    desc: Exec into the running container
+    cmds:
+      - docker exec -it {{.CONTAINER_NAME}} bash
 
-  # load-image-mk8s:
-  #   desc: Load the .rock image into microk8s registry
-  #   cmds:
-  #     - |
-  #       rockcraft.skopeo --insecure-policy copy --dest-tls-verify=false \
-  #         oci-archive:{{.ROCK_NAME}} \
-  #         docker://localhost:32000/{{.IMAGE_NAME}}
+  docker-cleanup:
+    desc: Cleanup docker container and image
+    cmds:
+      - docker stop {{.CONTAINER_NAME}} || echo "Container not running or doesn't exist"
+      - docker rmi {{.IMAGE_NAME}} || echo "Image already removed or doesn't exist"
+
+  load-image-mk8s:
+    desc: Load the .rock image into microk8s registry
+    cmds:
+      - |
+        rockcraft.skopeo --insecure-policy copy --dest-tls-verify=false \
+          oci-archive:{{.ROCK_NAME}} \
+          docker://localhost:32000/{{.IMAGE_NAME}}
 
   # deploy-worker-charm:
   #   desc: Deploy the temporal-worker-k8s charm using the rock as resource

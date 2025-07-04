@@ -11,7 +11,6 @@ from models.event import Event
 from models.etl.extract_cmd import ExtractStrategy
 from models.etl.flow_input import ETLFlowInput
 from models.etl.query import QueryFactory
-from models.memory_monitor import MemoryMonitor
 
 
 # Configure logging
@@ -180,9 +179,6 @@ async def get_etl_metadata(input: ETLFlowInput) -> Dict[str, Any]:
 async def streaming_extract_data(
     input: ETLFlowInput, chunk_size: int
 ) -> List[Tuple[int, List[Dict[str, Any]]]]:
-    monitor = MemoryMonitor()
-    monitor.take_snapshot("extraction_start")
-
     query = QueryFactory.create(input.query_type, args=input.args)
     extract_method = ExtractStrategy.create(input.extract_strategy)
 
@@ -195,18 +191,11 @@ async def streaming_extract_data(
 
     chunks = []
     chunk_id = 0
-
     async for chunk_data in extract_method(query, chunk_size):
         logger.info(f"Received streaming chunk {chunk_id} with {len(chunk_data)} items")
         chunks.append((chunk_id, chunk_data))
         chunk_id += 1
-
-        if chunk_id % 10 == 0:
-            monitor.take_snapshot(f"streaming_progress_{chunk_id}")
-
-        activity.heartbeat(chunk_id)
-
-    monitor.take_snapshot("streaming_complete")
+        activity.heartbeat(f"Processed chunk {chunk_id} with {len(chunk_data)} items")
 
     return chunks
 
@@ -254,32 +243,12 @@ async def load_data_batch(events: List[Event], batch_size: int) -> int:
     if not events:
         return 0
 
-    monitor = MemoryMonitor()
-    monitor.take_snapshot("load_start")
-
     db = Database()
     total_inserted = 0
-
-    logger.info(f"Loading {len(events)} events in sub-batches of {batch_size}")
-
     for i in range(0, len(events), batch_size):
         sub_batch = events[i : i + batch_size]
-        try:
-            inserted = db.insert_events_batch(sub_batch)
-            total_inserted += inserted
-            logger.info(f"Inserted sub-batch {i // batch_size + 1}: {inserted} events")
+        total_inserted += db.insert_events_batch(sub_batch)
+        loaded = i + batch_size
+        activity.heartbeat(f"Loaded {loaded}/{len(events)} events")
 
-            if (i // batch_size + 1) % 5 == 0:
-                monitor.take_snapshot(f"load_progress_batch_{i // batch_size + 1}")
-
-            activity.heartbeat(f"Loaded {total_inserted}/{len(events)} events")
-
-        except Exception as ex:
-            logger.error(f"Error inserting sub-batch {i // batch_size + 1}: {ex}")
-            continue
-
-    monitor.take_snapshot("load_complete")
-    monitor.log_final_stats()
-
-    logger.info(f"Successfully loaded {total_inserted} out of {len(events)} events")
     return total_inserted

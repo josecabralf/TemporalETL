@@ -3,8 +3,7 @@ from importlib import import_module
 import logging
 import os
 from typing import Dict, Any, Type
-from pathlib import Path
-
+from models.file_utils import find_project_root
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -81,19 +80,6 @@ class QueryFactory:
     _modules_imported = False
 
     @staticmethod
-    def _find_project_root(
-        marker_files=(".project-root", "pyproject.toml", "setup.py", ".git"),
-    ):
-        """
-        Find the project root directory by looking for specific marker files.
-        """
-        current = Path(__file__).resolve()
-        for parent in [current] + list(current.parents):
-            if any((parent / marker).exists() for marker in marker_files):
-                return parent
-        return current.parent
-
-    @staticmethod
     def _discover_query_directories():
         """Automatically discover all directories that might contain query modules."""
         sources_path = os.path.join(QueryFactory._project_root, "sources")  # type: ignore
@@ -133,7 +119,7 @@ class QueryFactory:
             return
 
         if not QueryFactory._project_root:
-            QueryFactory._project_root = QueryFactory._find_project_root()
+            QueryFactory._project_root = find_project_root()
 
         # Dynamically discover query directories
         query_directories = QueryFactory._discover_query_directories()

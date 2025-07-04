@@ -1,9 +1,9 @@
 from importlib import import_module
 import logging
 import os
-from pathlib import Path
 import pkgutil
 from typing import Dict, Callable
+from models.file_utils import find_project_root
 
 
 # Configure logging
@@ -33,17 +33,6 @@ def extract_method(name: str):
 class ExtractStrategy:
     _project_root = None
     _modules_imported = False
-
-    @staticmethod
-    def find_project_root(
-        marker_files=(".project-root", "pyproject.toml", "setup.py", ".git"),
-    ):
-        """Find project root by looking for marker files."""
-        current = Path(__file__).resolve()
-        for parent in [current] + list(current.parents):
-            if any((parent / marker).exists() for marker in marker_files):
-                return parent
-        return current.parent  # Fallback
 
     @staticmethod
     def _discover_flow_directories():
@@ -82,7 +71,7 @@ class ExtractStrategy:
             return
 
         if not ExtractStrategy._project_root:
-            ExtractStrategy._project_root = ExtractStrategy.find_project_root()
+            ExtractStrategy._project_root = find_project_root()
 
         # Dynamically discover flow directories
         flow_directories = ExtractStrategy._discover_flow_directories()

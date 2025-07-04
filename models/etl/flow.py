@@ -5,7 +5,6 @@ from typing import Any, Dict, List
 from temporalio import activity, workflow
 
 from db.db import Database
-
 from models.event import Event
 from models.etl.extract_cmd import ExtractStrategy
 from models.etl.flow_input import ETLFlowInput
@@ -118,20 +117,15 @@ async def transform_data(
 
 @activity.defn
 async def load_data(events: List[Event]) -> int:
+    if not events:
+        return 0
+
     db = Database()
-
-    already_inserted: int = (
-        int(activity.info().heartbeat_details[0])
-        if activity.info().heartbeat_details
-        else 0
-    )
-    loaded = len(events)
-
-    for i in range(already_inserted, loaded, ETLFlow.BATCH_SIZE):
+    total_inserted = 0
+    for i in range(0, len(events), ETLFlow.BATCH_SIZE):
         batch = events[i : i + ETLFlow.BATCH_SIZE]
-        db.insert_events_batch(batch)
+        total_inserted += db.insert_events_batch(batch)
+        loaded = i + len(batch)
+        activity.heartbeat(f"Loaded {loaded}/{len(events)} events")
 
-        inserted = i + len(batch)
-        activity.heartbeat(inserted)
-
-    return loaded
+    return total_inserted

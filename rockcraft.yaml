@@ -8,7 +8,7 @@ platforms:
   amd64:
 
 services:
-  temporal-worker:
+  worker:
     user: _daemon_
     override: replace
     startup: disabled
@@ -18,7 +18,7 @@ services:
       TEMPORAL_NAMESPACE: default
 
       DB_HOST: localhost
-      DB_PORT: 7000
+      DB_PORT: '7000'
       DB_NAME: workflows-db
       DB_USER: workflows-db
       DB_PASSWORD: workflows-db
@@ -26,18 +26,7 @@ services:
       DB_EVENTS_TABLE: launchpad_events
 
 parts:
-  worker-dependencies:
-    plugin: uv
-    source: .
-    source-type: local
-    build-snaps:
-      - astral-uv
-    stage-packages:
-      - python3-venv
-
   add-ca-certificates:
-    # This installs ca-certificates in the build env to populate our /etc/ssl/certs,
-    # then copies just the ca-certificates.crt to the final image
     plugin: nil
     build-packages:
       - ca-certificates
@@ -45,22 +34,33 @@ parts:
       mkdir -p $CRAFT_PART_INSTALL/etc/ssl/certs/
       cp /etc/ssl/certs/ca-certificates.crt $CRAFT_PART_INSTALL/etc/ssl/certs/ca-certificates.crt
 
+  worker-deps:
+    plugin: python
+    source: .
+    python-requirements:
+      - requirements.txt
+    stage-packages:
+      - python3
+      - python3-venv
+
   worker-app:
     plugin: dump
     source: .
     source-type: local
     overlay-packages:
       - ca-certificates
+      - bash
       - coreutils
       - curl
-      - bash
     override-pull: |
       craftctl default
-      # Ignored files/directories
-      rm -rf rockcraft.yaml .env.local .gitignore .git README.md
-      # Make the start script executable
       chmod +x scripts/start-worker.sh
     organize:
-      "*": /app/
+      scripts/start-worker.sh: app/scripts/start-worker.sh
+      worker.py: app/worker.py
+      db/: app/db/
+      models/: app/models/
+      sources/: app/sources/
+      requirements.txt: app/requirements.txt
     prime:
       - app
