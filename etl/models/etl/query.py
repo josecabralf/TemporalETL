@@ -1,8 +1,9 @@
-from dataclasses import dataclass
-from importlib import import_module
 import logging
 import os
-from typing import Dict, Any, Type
+from dataclasses import dataclass
+from importlib import import_module
+from typing import Any, Dict, Type
+
 from models.file_utils import find_project_root
 
 # Configure logging
@@ -12,8 +13,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Query:
-    """
-    Abstract base class for all ETL query operations.
+    """Abstract base class for all ETL query operations.
 
     It encapsulates the parameters and logic needed to extract data
     from specific sources.
@@ -23,23 +23,17 @@ class Query:
     event_type: str
 
     def __init__(self, source_kind_id: str, event_type: str) -> None:
-        """
-        Initialize the query with source kind and event type.
-        """
+        """Initialize the query with source kind and event type."""
         self.source_kind_id = source_kind_id
         self.event_type = event_type
 
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> "Query":
-        """
-        Create a query instance from a dictionary of parameters.
-        """
+        """Create a query instance from a dictionary of parameters."""
         raise NotImplementedError("Subclasses must implement from_dict() method.")
 
     def to_summary_base(self) -> Dict[str, Any]:
-        """
-        Convert the query to a summary dictionary for reporting and logging.
-        """
+        """Convert the query to a summary dictionary for reporting and logging."""
         raise NotImplementedError("Subclasses must implement to_summary_base() method.")
 
 
@@ -48,8 +42,7 @@ _query_type_registry: Dict[str, Type["Query"]] = {}
 
 
 def query_type(query_type_id: str):
-    """
-    Decorator to register query types automatically.
+    """Decorator to register query types automatically.
 
     Args:
         query_type_id: String identifier for the query type
@@ -71,8 +64,7 @@ def query_type(query_type_id: str):
 
 
 class QueryFactory:
-    """
-    Factory class for creating query instances dynamically based on type identifiers.
+    """Factory class for creating query instances dynamically based on type identifiers.
     Uses decorator-based registration for automatic discovery of query types.
     """
 
@@ -139,8 +131,7 @@ class QueryFactory:
 
     @staticmethod
     def create(query_type: str, args: Dict[str, Any]) -> Query:
-        """
-        Create a query instance of the specified type with the given arguments.
+        """Create a query instance of the specified type with the given arguments.
         Auto-discovers and imports query modules, then checks the decorator registry.
 
         Args:

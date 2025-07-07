@@ -1,17 +1,17 @@
 import logging
 import threading
-from typing import List
 from contextlib import contextmanager
+from typing import List
 
 import psycopg2
 import psycopg2.extras
 
-from db.configuration import DatabaseConfiguration
 from db.sql import (
     get_create_events_table_query,
     get_insert_events_query,
     get_update_events_parents_query,
 )
+from config.database import DatabaseConfiguration
 from models.event import Event
 
 logger = logging.getLogger(__name__)
@@ -72,8 +72,7 @@ class Database:
                 conn.close()
 
     def insert_events_batch(self, events: List[Event]) -> int:
-        """
-        Insert multiple events in a single batch transaction.
+        """Insert multiple events in a single batch transaction.
 
         Args:
             events: List of Event objects to insert

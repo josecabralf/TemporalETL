@@ -1,11 +1,11 @@
 import asyncio
-import uuid
 import os
+import uuid
 
 from temporalio.client import Client
 
 from models.etl.flow import ETLFlow
-from models.etl.flow_input import ETLFlowInput
+from models.etl.input import ETLInput
 
 
 async def main():
@@ -32,7 +32,7 @@ async def main():
     for i, config in enumerate(workflow_configs):
         workflow_id = f"launchpad-workflow-{i + 1}-{uuid.uuid4()}"
 
-        input = ETLFlowInput(
+        input = ETLInput(
             query_type=config["source_kind_id"],
             extract_strategy=EXTRACT_STRATEGY,
             args=config,

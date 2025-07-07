@@ -1,10 +1,10 @@
-from importlib import import_module
 import logging
 import os
 import pkgutil
-from typing import Dict, Callable
-from models.file_utils import find_project_root
+from importlib import import_module
+from typing import Callable, Dict
 
+from models.file_utils import find_project_root
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,8 +16,7 @@ _extract_method_registry: Dict[str, Callable] = {}
 
 
 def extract_method(name: str):
-    """
-    Decorator to register extract methods automatically.
+    """Decorator to register extract methods automatically.
 
     Args:
         extract_cmd_type: String identifier for the extract command type
@@ -104,8 +103,7 @@ class ExtractStrategy:
 
     @staticmethod
     def create(extract_cmd_type: str) -> Callable:
-        """
-        Create an extract command function based on the specified type.
+        """Create an extract command function based on the specified type.
         Auto-discovers and imports flow modules, then checks the decorator registry.
 
         Args:

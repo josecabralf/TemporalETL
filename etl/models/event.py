@@ -1,14 +1,13 @@
-from datetime import datetime
-from typing import Dict, Any, Optional
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, Optional
 
-from models.date_utils import get_week_start_date, change_timezone
+from models.date_utils import change_timezone, get_week_start_date
 
 
 @dataclass
 class Event:
-    """
-    Represents a standardized event in the Worklytics format for database storage.
+    """Represents a standardized event in the Worklytics format for database storage.
 
     Attributes:
         id (str): Unique event identifier, typically combining entity type and ID
@@ -45,8 +44,7 @@ class Event:
     metrics: Optional[Dict[str, Any]] = None  # jsonb, metrics for the event
 
     def __post_init__(self) -> None:
-        """
-        Validate and normalize event data after initialization.
+        """Validate and normalize event data after initialization.
 
         Raises:
             ValueError: If any required field is empty or invalid
@@ -88,8 +86,7 @@ class Event:
             self.metrics = {}
 
     def relation_properties_as_json(self) -> Optional[str]:
-        """
-        Serialize relation properties to a JSON string for database storage.
+        """Serialize relation properties to a JSON string for database storage.
 
         Returns:
             JSON string representation of relation properties, or None if empty
@@ -103,8 +100,7 @@ class Event:
         )
 
     def event_properties_as_json(self) -> Optional[str]:
-        """
-        Serialize event properties to a JSON string for database storage.
+        """Serialize event properties to a JSON string for database storage.
 
         Returns:
             JSON string representation of event properties, or None if empty
@@ -118,8 +114,7 @@ class Event:
         )
 
     def metrics_as_json(self) -> Optional[str]:
-        """
-        Serialize metrics to a JSON string for database storage.
+        """Serialize metrics to a JSON string for database storage.
 
         Returns:
             JSON string representation of metrics, or None if empty

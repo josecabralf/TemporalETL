@@ -1,17 +1,16 @@
-import logging
 import asyncio
-from datetime import timedelta
-from typing import Any, Dict, List, Tuple, Optional
+import logging
 from dataclasses import dataclass
+from datetime import timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 from temporalio import activity, workflow
 
 from db.db import Database
-from models.event import Event
 from models.etl.extract_cmd import ExtractStrategy
-from models.etl.flow_input import ETLFlowInput
+from models.etl.input import ETLInput
 from models.etl.query import QueryFactory
-
+from models.event import Event
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,12 +30,9 @@ class StreamingConfig:
 
 @workflow.defn
 class StreamingETLFlow:
-    """
-    Streaming Temporal workflow for processing data through an ETL pipeline.
+    """Streaming Temporal workflow for processing data through an ETL pipeline.
     Processes data in chunks to optimize memory usage and enable processing of large datasets.
     """
-
-    queue_name: str = "streaming-etl-task-queue"
 
     @staticmethod
     def get_activities() -> List[Any]:
@@ -50,10 +46,9 @@ class StreamingETLFlow:
 
     @workflow.run
     async def run(
-        self, input: ETLFlowInput, config: Optional[StreamingConfig] = None
+        self, input: ETLInput, config: Optional[StreamingConfig] = None
     ) -> Dict[str, Any]:
-        """
-        Execute the streaming ETL workflow pipeline.
+        """Execute the streaming ETL workflow pipeline.
 
         Args:
             input: FlowInput containing workflow parameters
@@ -168,16 +163,14 @@ class StreamingETLFlow:
 
 
 @activity.defn
-async def get_etl_metadata(input: ETLFlowInput) -> Dict[str, Any]:
-    """
-    Get metadata about the extraction to help inform the processing results.
-    """
+async def get_etl_metadata(input: ETLInput) -> Dict[str, Any]:
+    """Get metadata about the extraction to help inform the processing results."""
     return QueryFactory.create(input.query_type, args=input.args).to_summary_base()
 
 
 @activity.defn
 async def streaming_extract_data(
-    input: ETLFlowInput, chunk_size: int
+    input: ETLInput, chunk_size: int
 ) -> List[Tuple[int, List[Dict[str, Any]]]]:
     query = QueryFactory.create(input.query_type, args=input.args)
     extract_method = ExtractStrategy.create(input.extract_strategy)

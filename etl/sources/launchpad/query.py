@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Any, Dict
 
 from models.etl.query import Query, query_type
 
@@ -7,9 +7,7 @@ from models.etl.query import Query, query_type
 @dataclass
 @query_type("launchpad")
 class LaunchpadQuery(Query):
-    """
-    Query implementation for Launchpad API data extraction.
-    """
+    """Query implementation for Launchpad API data extraction."""
 
     application_name: str
     service_root: str
@@ -29,8 +27,7 @@ class LaunchpadQuery(Query):
         source_kind_id: str,
         event_type: str,
     ) -> None:
-        """
-        Initialize LaunchpadQuery with connection and scope parameters.
+        """Initialize LaunchpadQuery with connection and scope parameters.
 
         Args:
             application_name: Application identifier for Launchpad API access
@@ -50,8 +47,7 @@ class LaunchpadQuery(Query):
 
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> "LaunchpadQuery":
-        """
-        Create a LaunchpadQuery instance from a dictionary of parameters.
+        """Create a LaunchpadQuery instance from a dictionary of parameters.
 
         Args:
             data: Dictionary containing Launchpad query parameters
@@ -73,8 +69,7 @@ class LaunchpadQuery(Query):
         )
 
     def to_summary_base(self) -> Dict[str, Any]:
-        """
-        Generate a summary dictionary for logging and monitoring purposes.
+        """Generate a summary dictionary for logging and monitoring purposes.
 
         Returns:
             Dictionary containing key query information for summary reporting

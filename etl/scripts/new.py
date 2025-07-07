@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Script to automate the creation of new data sources for the TemporalETL system,
+"""Script to automate the creation of new data sources for the TemporalETL system,
 or to validate and update existing sources to ensure proper structure.
 
 Usage:

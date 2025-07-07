@@ -6,8 +6,8 @@ vars:
   ROCK_NAME: etl-worker_0.1_amd64.rock
   IMAGE_NAME: etl-worker-rock:latest
   CONTAINER_NAME: etl-temporal-worker
-  APP_NAME: etl-temporal-worker
-  QUEUE_NAME: example-workflow-queue
+  APP_NAME: temporal-etl-worker
+  QUEUE_NAME: etl-queue
 
 tasks:
   default:
@@ -58,11 +58,6 @@ tasks:
         rockcraft.skopeo --insecure-policy copy oci-archive:{{.ROCK_NAME}} \
           docker-daemon:{{.IMAGE_NAME}}
 
-  # start-workflow:
-  #   desc: Start a "Fake Replicate" Workflow
-  #   cmds:
-  #     - uv run python -m temporal_worker.python_scripts.start_workflow
-
   docker-run:
     desc: Run the rock image (with --network set to host)
     cmds:
@@ -82,31 +77,34 @@ tasks:
   load-image-mk8s:
     desc: Load the .rock image into microk8s registry
     cmds:
-      - |
-        rockcraft.skopeo --insecure-policy copy --dest-tls-verify=false \
+      - rockcraft.skopeo --insecure-policy copy --dest-tls-verify=false \
           oci-archive:{{.ROCK_NAME}} \
           docker://localhost:32000/{{.IMAGE_NAME}}
 
-  # deploy-worker-charm:
-  #   desc: Deploy the temporal-worker-k8s charm using the rock as resource
-  #   cmds:
-  #     - |
-  #       juju deploy temporal-worker-k8s {{.APP_NAME}} \
-  #         --resource temporal-worker-image=localhost:32000/{{.IMAGE_NAME}}
+  deploy-worker-charm:
+    desc: Deploy the temporal-worker-k8s charm using the rock as resource
+    cmds:
+      - juju deploy temporal-worker-k8s {{.APP_NAME}} \
+          --resource temporal-worker-image=localhost:32000/{{.IMAGE_NAME}}
 
-  # configure-worker-charm:
-  #   desc: Configure the temporal-worker-k8s charm. This is specific to the microk8s juju setup.
-  #   cmds:
-  #     - |
-  #       juju config {{.APP_NAME}} \
-  #         host="temporal-k8s.temporal-model:7233" \
-  #         queue="{{.QUEUE_NAME}}" \
-  #         namespace="default"
+  configure-worker-charm:
+    desc: Configure the temporal-worker-k8s charm. This is specific to the microk8s juju setup.
+    cmds:
+      - |
+        juju config {{.APP_NAME}} \
+          host="temporal-k8s.temporal-model:7233" \
+          queue="{{.QUEUE_NAME}}" \
+          namespace="default"
 
-  # follow-charm-logs:
-  #   desc: Follow the logs of the worker charm
+  follow-charm-logs:
+    desc: Follow the logs of the worker charm
+    cmds:
+      - microk8s kubectl -n worker-model logs {{.APP_NAME}}-0 -c temporal-worker -f
+
+  # start-workflow:
+  #   desc: Start a "Fake Replicate" Workflow
   #   cmds:
-  #     - microk8s kubectl -n worker-model logs {{.APP_NAME}}-0 -c temporal-worker -f
+  #     - uv run python -m temporal_worker.python_scripts.start_workflow
 
   # juju-start-workflow:
   #   desc: Start the example Workflow using the charmed Temporal cluster and worker.

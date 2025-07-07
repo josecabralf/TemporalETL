@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Streaming ETL Worker - Run streaming ETL workflows with optimized memory usage.
+"""Streaming ETL Worker - Run streaming ETL workflows with optimized memory usage.
 
 This script demonstrates how to use the streaming ETL pipeline for processing
 large datasets with better memory efficiency.
@@ -12,9 +11,8 @@ from datetime import datetime
 
 from temporalio.client import Client
 
-from models.etl.streaming_etl_flow import StreamingETLFlow, StreamingConfig
-from models.etl.flow_input import ETLFlowInput
-
+from models.etl.input import ETLInput
+from models.etl.streaming_flow import StreamingConfig, StreamingETLFlow
 
 # Configure logging
 logging.basicConfig(
@@ -23,7 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def run_bugs_streaming_workflow_example():
+async def run_bugs_streaming_workflow_example(member: str | None = None):
     """Example of running a streaming ETL workflow."""
     # Connect to Temporal
     client = await Client.connect("localhost:7233")
@@ -37,14 +35,17 @@ async def run_bugs_streaming_workflow_example():
         memory_threshold_mb=500,  # Memory threshold for backpressure
     )
 
+    if not member:
+        member = MEMBER
+
     # Create workflow input
-    flow_input = ETLFlowInput(
+    flow_input = ETLInput(
         query_type="launchpad",
         extract_strategy="launchpad-bugs-streaming",
         args={
             "source_kind_id": "launchpad",
             "event_type": "bugs",
-            "member": MEMBER,
+            "member": member,
             "data_date_start": "2023-09-01",
             "data_date_end": "2025-03-04",
             "application_name": "temporal-etl-streaming",
@@ -71,7 +72,7 @@ async def run_bugs_streaming_workflow_example():
     return result
 
 
-async def run_questions_streaming_example():
+async def run_questions_streaming_example(member: str | None = None):
     """Example of running a streaming ETL workflow for questions."""
     client = await Client.connect("localhost:7233")
 
@@ -83,13 +84,16 @@ async def run_questions_streaming_example():
         memory_threshold_mb=400,
     )
 
-    flow_input = ETLFlowInput(
+    if not member:
+        member = MEMBER
+
+    flow_input = ETLInput(
         query_type="launchpad",
         extract_strategy="launchpad-questions-streaming",
         args={
             "source_kind_id": "launchpad",
             "event_type": "questions",
-            "member": MEMBER,
+            "member": member,
             "data_date_start": "2023-01-01",
             "data_date_end": "2024-12-31",
             "application_name": "temporal-etl-questions-streaming",
@@ -111,7 +115,7 @@ async def run_questions_streaming_example():
     return result
 
 
-async def run_merge_proposals_streaming_example():
+async def run_merge_proposals_streaming_example(member: str | None = None):
     """Example of running a streaming ETL workflow for merge proposals."""
     client = await Client.connect("localhost:7233")
 
@@ -123,13 +127,16 @@ async def run_merge_proposals_streaming_example():
         memory_threshold_mb=350,
     )
 
-    flow_input = ETLFlowInput(
+    if not member:
+        member = MEMBER
+
+    flow_input = ETLInput(
         query_type="launchpad",
         extract_strategy="launchpad-merge_proposals-streaming",
         args={
             "source_kind_id": "launchpad",
             "event_type": "merge_proposals",
-            "member": MEMBER,
+            "member": member,
             "data_date_start": "2024-01-01",
             "data_date_end": "2024-12-31",
             "application_name": "temporal-etl-mp-streaming",
@@ -154,6 +161,9 @@ async def run_merge_proposals_streaming_example():
 async def main():
     """Main function to run worker or example workflows."""
     import sys
+
+    if len(sys.argv) > 2:
+        MEMBER = sys.argv[2] or "member_1"
 
     if len(sys.argv) > 1 and sys.argv[1] == "bugs":
         await run_bugs_streaming_workflow_example()

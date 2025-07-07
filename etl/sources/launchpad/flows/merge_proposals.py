@@ -1,17 +1,14 @@
+import logging
 from datetime import datetime
+from typing import Any, AsyncIterator, Dict, List
+
 import pytz
 import requests
-from typing import Any, AsyncIterator, Dict, List
+from launchpadlib.launchpad import Launchpad
 
 from models.date_utils import date_in_range, dates_in_range
 from models.etl.extract_cmd import extract_method
-
 from sources.launchpad.query import LaunchpadQuery
-
-from launchpadlib.launchpad import Launchpad
-
-import logging
-
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

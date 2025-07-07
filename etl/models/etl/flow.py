@@ -5,11 +5,10 @@ from typing import Any, Dict, List
 from temporalio import activity, workflow
 
 from db.db import Database
-from models.event import Event
 from models.etl.extract_cmd import ExtractStrategy
-from models.etl.flow_input import ETLFlowInput
+from models.etl.input import ETLInput
 from models.etl.query import QueryFactory
-
+from models.event import Event
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -18,11 +17,8 @@ logger = logging.getLogger(__name__)
 
 @workflow.defn
 class ETLFlow:
-    """
-    Temporal workflow for processing Launchpad data through an ETL pipeline.
-    """
+    """Temporal workflow for processing Launchpad data through an ETL pipeline."""
 
-    queue_name: str = "etl-task-queue"
     BATCH_SIZE: int = 1000
 
     @staticmethod
@@ -31,7 +27,7 @@ class ETLFlow:
         return [get_etl_metadata, extract_data, transform_data, load_data]
 
     @workflow.run
-    async def run(self, input: ETLFlowInput) -> Dict[str, Any]:
+    async def run(self, input: ETLInput) -> Dict[str, Any]:
         """Execute the ETL workflow pipeline."""
         summary: Dict[str, Any] = {
             "workflow_id": workflow.info().workflow_id,
@@ -75,13 +71,13 @@ class ETLFlow:
 
 
 @activity.defn
-async def get_etl_metadata(input: ETLFlowInput) -> Dict[str, Any]:
+async def get_etl_metadata(input: ETLInput) -> Dict[str, Any]:
     """Get metadata about the extraction to help inform the processing results."""
     return QueryFactory.create(input.query_type, args=input.args).to_summary_base()
 
 
 @activity.defn
-async def extract_data(input: ETLFlowInput) -> List[Dict[str, Any]]:
+async def extract_data(input: ETLInput) -> List[Dict[str, Any]]:
     query = QueryFactory.create(input.query_type, args=input.args)
     extract_data = ExtractStrategy.create(input.extract_strategy)
     logger.info(

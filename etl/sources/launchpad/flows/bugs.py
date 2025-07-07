@@ -1,12 +1,10 @@
+import logging
 from typing import Any, AsyncIterator, Dict, List
-
-from sources.launchpad.query import LaunchpadQuery
-from models.etl.extract_cmd import extract_method
 
 from launchpadlib.launchpad import Launchpad
 
-import logging
-
+from models.etl.extract_cmd import extract_method
+from sources.launchpad.query import LaunchpadQuery
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

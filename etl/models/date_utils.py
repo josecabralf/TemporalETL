@@ -1,10 +1,9 @@
-"""
-Date range helper functions
-"""
+"""Date range helper functions"""
 
 from datetime import datetime, timedelta
-from pytz import timezone
 from typing import List
+
+from pytz import timezone
 
 
 def date_in_range(date: datetime, from_date: datetime, to_date: datetime) -> bool:
@@ -18,8 +17,7 @@ def dates_in_range(
 
 
 def get_week_start_date(date_obj: datetime) -> str:
-    """
-    Calculate the Monday date for the week containing the given date.
+    """Calculate the Monday date for the week containing the given date.
 
     Args:
         date_obj: datetime object for which to find the week start
@@ -33,8 +31,7 @@ def get_week_start_date(date_obj: datetime) -> str:
 
 
 def change_timezone(date_str: str, from_tz: str, to_tz: str) -> str:
-    """
-    Convert a date string from one timezone to another.
+    """Convert a date string from one timezone to another.
 
     Args:
         date_str: Date string in ISO format (YYYY-MM-DDTHH:MM:SSZ)

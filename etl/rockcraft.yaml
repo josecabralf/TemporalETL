@@ -16,6 +16,7 @@ services:
     environment:
       TEMPORAL_HOST: localhost:7233
       TEMPORAL_NAMESPACE: default
+      TEMPORAL_QUEUE: etl-queue
 
       DB_HOST: localhost
       DB_PORT: '7000'
@@ -26,14 +27,6 @@ services:
       DB_EVENTS_TABLE: launchpad_events
 
 parts:
-  add-ca-certificates:
-    plugin: nil
-    build-packages:
-      - ca-certificates
-    override-build: |-
-      mkdir -p $CRAFT_PART_INSTALL/etc/ssl/certs/
-      cp /etc/ssl/certs/ca-certificates.crt $CRAFT_PART_INSTALL/etc/ssl/certs/ca-certificates.crt
-
   worker-deps:
     plugin: python
     source: .
@@ -42,6 +35,14 @@ parts:
     stage-packages:
       - python3
       - python3-venv
+
+  add-ca-certificates:
+    plugin: nil
+    build-packages:
+      - ca-certificates
+    override-build: |-
+      mkdir -p $CRAFT_PART_INSTALL/etc/ssl/certs/
+      cp /etc/ssl/certs/ca-certificates.crt $CRAFT_PART_INSTALL/etc/ssl/certs/ca-certificates.crt
 
   worker-app:
     plugin: dump
@@ -56,11 +57,12 @@ parts:
       craftctl default
       chmod +x scripts/start-worker.sh
     organize:
-      scripts/start-worker.sh: app/scripts/start-worker.sh
-      worker.py: app/worker.py
+      config: app/config/
       db/: app/db/
       models/: app/models/
+      scripts/start-worker.sh: app/scripts/start-worker.sh
       sources/: app/sources/
       requirements.txt: app/requirements.txt
+      worker.py: app/worker.py
     prime:
       - app

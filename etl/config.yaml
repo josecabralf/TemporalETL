@@ -1,0 +1,4 @@
+temporal-worker-k8s:
+  host: "10.152.183.30:7233"
+  queue: "etl-queue"
+  namespace: "default"

@@ -1,5 +1,4 @@
-"""
-This script is used to add all launchpad workflows to the ETL queue for the Temporal ETL system to process.
+"""This script is used to add all launchpad workflows to the ETL queue for the Temporal ETL system to process.
 The idea is that this script will be run periodically to ensure that all workflows are queued for processing.
 
 What it does:
@@ -15,17 +14,15 @@ What it does:
 5. Exits (does not wait for execution of the workflows).
 """
 
-import os
 import logging
+import os
 import uuid
 
 from launchpadlib.launchpad import Launchpad
-
 from temporalio.client import Client
 
 from models.etl.flow import ETLFlow
-from models.etl.flow_input import ETLFlowInput
-
+from models.etl.input import ETLInput
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -65,7 +62,7 @@ async def queue_workflows():
         member_workflows = []
 
         for event_type, strategy in EVENTS_AND_STRATS.items():
-            input = ETLFlowInput(
+            input = ETLInput(
                 query_type=SOURCE_KIND_ID,
                 extract_strategy=strategy,
                 args={

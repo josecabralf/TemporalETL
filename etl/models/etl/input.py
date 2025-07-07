@@ -1,11 +1,10 @@
-from typing import Dict, Any
 from dataclasses import dataclass
+from typing import Any, Dict
 
 
 @dataclass
-class ETLFlowInput:
-    """
-    Standardized input container for workflow parameters.
+class ETLInput:
+    """Standardized input container for workflow parameters.
 
     The FlowInput structure separates the concern of identifying the operation type
     from the specific parameters, allowing workflows to be more generic and reusable
