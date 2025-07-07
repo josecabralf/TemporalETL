@@ -1,15 +1,21 @@
 import asyncio
 import sys
 
+from temporalio.client import Client
+
+from config.temporal import TemporalConfig
+
 from models.etl.worker import ETLWorker, StreamingETLWorker
 
 
 async def start_worker():
-    await ETLWorker().run()
+    client = await Client.connect(TemporalConfig.host)
+    await ETLWorker(client).run()
 
 
 async def start_streaming_worker():
-    await StreamingETLWorker().run()
+    client = await Client.connect(TemporalConfig.host)
+    await StreamingETLWorker(client).run()
 
 
 if __name__ == "__main__":

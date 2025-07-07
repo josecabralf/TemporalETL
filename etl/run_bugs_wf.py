@@ -4,6 +4,8 @@ import uuid
 
 from temporalio.client import Client
 
+from config.temporal import TemporalConfig
+
 from models.etl.flow import ETLFlow
 from models.etl.input import ETLInput
 
@@ -42,7 +44,7 @@ async def main():
             workflow=ETLFlow.run,
             args=(input,),
             id=workflow_id,
-            task_queue=ETLFlow.queue_name,
+            task_queue=TemporalConfig.queue,
         )
 
         workflow_handles.append(handle)
@@ -83,7 +85,7 @@ if __name__ == "__main__":
         f"  Member: {MEMBER}\n"
         f"  Event Type: {EVENT_TYPE}\n"
         f"  Source Kind ID: {SOURCE_KIND_ID}\n"
-        f"  Task Queue: {ETLFlow.queue_name}\n"
+        f"  Task Queue: {TemporalConfig.queue}\n"
     )
 
     asyncio.run(main())

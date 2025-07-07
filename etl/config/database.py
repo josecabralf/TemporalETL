@@ -20,9 +20,5 @@ class DatabaseConfiguration:
 
     @property
     def connection_string(self) -> str:
-        """Generate a PostgreSQL connection string.
-
-        Returns:
-            str: Connection string for psycopg2.
-        """
+        """Generate a PostgreSQL connection string."""
         return f"host={self._host} port={self._port} dbname={self._name} user={self._user} password={self._password}"

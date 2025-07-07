@@ -11,6 +11,8 @@ from datetime import datetime
 
 from temporalio.client import Client
 
+from config.temporal import TemporalConfig
+
 from models.etl.input import ETLInput
 from models.etl.streaming_flow import StreamingConfig, StreamingETLFlow
 
@@ -60,7 +62,7 @@ async def run_bugs_streaming_workflow_example(member: str | None = None):
         StreamingETLFlow.run,
         args=[flow_input, config],
         id=f"streaming-etl-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-        task_queue=StreamingETLFlow.queue_name,
+        task_queue=TemporalConfig.queue,
     )
 
     logger.info(f"Started workflow: {handle.id}")
@@ -107,7 +109,7 @@ async def run_questions_streaming_example(member: str | None = None):
         StreamingETLFlow.run,
         args=[flow_input, config],
         id=f"streaming-questions-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-        task_queue=StreamingETLFlow.queue_name,
+        task_queue=TemporalConfig.queue,
     )
 
     result = await handle.result()
@@ -150,7 +152,7 @@ async def run_merge_proposals_streaming_example(member: str | None = None):
         StreamingETLFlow.run,
         args=[flow_input, config],
         id=f"streaming-mp-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-        task_queue=StreamingETLFlow.queue_name,
+        task_queue=TemporalConfig.queue,
     )
 
     result = await handle.result()
