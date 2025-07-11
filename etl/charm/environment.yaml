@@ -18,6 +18,19 @@ juju:
     name: DB_EVENTS_TABLE
     key: events-table
 
+  - secret-id: d1omemvmp25c760tb20g
+    name: LP_CONSUMER_KEY
+    key: consumer-key
+  - secret-id: d1omemvmp25c760tb20g
+    name: LP_CONSUMER_SECRET
+    key: consumer-secret
+  - secret-id: d1omemvmp25c760tb20g
+    name: LP_ACCESS_TOKEN_KEY
+    key: access-key
+  - secret-id: d1omemvmp25c760tb20g
+    name: LP_ACCESS_TOKEN_SECRET
+    key: access-secret
+
 # env:
   # - name: LP_TEAM_NAME
   #   value: canonical

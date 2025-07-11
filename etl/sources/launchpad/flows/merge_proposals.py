@@ -11,6 +11,7 @@ from models.etl.extract_cmd import extract_method
 from models.logger import logger
 
 from sources.launchpad.query import LaunchpadQuery
+from sources.launchpad.config import LaunchpadConfiguration
 
 
 merge_proposal_status = [
@@ -28,11 +29,7 @@ merge_proposal_status = [
 @extract_method(name="launchpad-merge_proposals")
 async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
     logger.info("Extracting Launchpad merge proposal data for member: %s", query.member)
-    lp = Launchpad.login_anonymously(
-        consumer_name=query.application_name,
-        service_root=query.service_root,
-        version=query.version,
-    )
+    lp = LaunchpadConfiguration.get_launchpad_instance()
     if not lp:
         raise ValueError("Failed to connect to Launchpad API")
 

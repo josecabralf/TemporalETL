@@ -7,18 +7,16 @@ from launchpadlib.launchpad import Launchpad
 
 from models.date_utils import date_in_range, dates_in_range
 from models.etl.extract_cmd import extract_method
-from sources.launchpad.query import LaunchpadQuery
 from models.logger import logger
+
+from sources.launchpad.query import LaunchpadQuery
+from sources.launchpad.config import LaunchpadConfiguration
 
 
 @extract_method(name="launchpad-questions")
 async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
     logger.info("Extracting Launchpad question data for member: %s", query.member)
-    lp = Launchpad.login_anonymously(
-        consumer_name=query.application_name,
-        service_root=query.service_root,
-        version=query.version,
-    )
+    lp = LaunchpadConfiguration.get_launchpad_instance()
     if not lp:
         raise ValueError("Failed to connect to Launchpad API")
 
