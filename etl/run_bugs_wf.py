@@ -4,15 +4,14 @@ import uuid
 
 from temporalio.client import Client
 
-from config.temporal import TemporalConfig
+from config.temporal import TemporalConfiguration
 
-from models.etl.flow import ETLFlow
 from models.etl.input import ETLInput
 
 
 async def main():
     # Connect to Temporal server
-    client = await Client.connect(TEMPORAL_HOST)
+    client = await Client.connect(TemporalConfiguration.host)
 
     # Define multiple workflow configurations
     workflow_configs = [
@@ -41,10 +40,10 @@ async def main():
         )
 
         handle = await client.start_workflow(
-            workflow=ETLFlow.run,
+            workflow="ETLFlow",
             args=(input,),
             id=workflow_id,
-            task_queue=TemporalConfig.queue,
+            task_queue=TemporalConfiguration.queue,
         )
 
         workflow_handles.append(handle)
@@ -68,8 +67,6 @@ if __name__ == "__main__":
     FROM_DATE = os.getenv("FROM_DATE", "2023-01-01")
     TO_DATE = os.getenv("TO_DATE", "2023-03-31")
 
-    TEMPORAL_HOST = os.getenv("TEMPORAL_HOST", "localhost:7233")
-
     MEMBER = "member_1"
 
     EVENT_TYPE = "bugs"
@@ -81,11 +78,11 @@ if __name__ == "__main__":
         f"  Application ID: {LP_APP_ID}\n"
         f"  Service Root: {LP_WEB_ROOT}\n"
         f"  Date Range: {FROM_DATE} to {TO_DATE}\n"
-        f"  Temporal Host: {TEMPORAL_HOST}\n"
+        f"  Temporal Host: {TemporalConfiguration.host}\n"
         f"  Member: {MEMBER}\n"
         f"  Event Type: {EVENT_TYPE}\n"
         f"  Source Kind ID: {SOURCE_KIND_ID}\n"
-        f"  Task Queue: {TemporalConfig.queue}\n"
+        f"  Task Queue: {TemporalConfiguration.queue}\n"
     )
 
     asyncio.run(main())

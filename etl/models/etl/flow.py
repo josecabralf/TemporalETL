@@ -1,18 +1,15 @@
-import logging
 from datetime import timedelta
 from typing import Any, Dict, List
 
 from temporalio import activity, workflow
 
 from db.db import Database
+
 from models.etl.extract_cmd import ExtractStrategy
 from models.etl.input import ETLInput
 from models.etl.query import QueryFactory
 from models.event import Event
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from models.logger import logger
 
 
 @workflow.defn
@@ -41,6 +38,7 @@ class ETLFlow:
             input,
             start_to_close_timeout=timedelta(minutes=1),
         )
+        logger.info(f"ETL flow {workflow.info().workflow_id} metadata: {metadata}")
         summary.update(metadata)
 
         extracted = await workflow.execute_activity(

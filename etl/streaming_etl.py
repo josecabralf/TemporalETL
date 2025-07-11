@@ -11,7 +11,7 @@ from datetime import datetime
 
 from temporalio.client import Client
 
-from config.temporal import TemporalConfig
+from config.temporal import TemporalConfiguration
 
 from models.etl.input import ETLInput
 from models.etl.streaming_flow import StreamingConfig, StreamingETLFlow
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 async def run_bugs_streaming_workflow_example(member: str | None = None):
     """Example of running a streaming ETL workflow."""
     # Connect to Temporal
-    client = await Client.connect("localhost:7233")
+    client = await Client.connect(TemporalConfiguration.host)
 
     # Configure streaming parameters
     config = StreamingConfig(
@@ -36,9 +36,6 @@ async def run_bugs_streaming_workflow_example(member: str | None = None):
         max_concurrent_chunks=3,  # Process up to 3 chunks concurrently
         memory_threshold_mb=500,  # Memory threshold for backpressure
     )
-
-    if not member:
-        member = MEMBER
 
     # Create workflow input
     flow_input = ETLInput(
@@ -62,7 +59,7 @@ async def run_bugs_streaming_workflow_example(member: str | None = None):
         StreamingETLFlow.run,
         args=[flow_input, config],
         id=f"streaming-etl-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-        task_queue=TemporalConfig.queue,
+        task_queue=TemporalConfiguration.queue,
     )
 
     logger.info(f"Started workflow: {handle.id}")
@@ -86,9 +83,6 @@ async def run_questions_streaming_example(member: str | None = None):
         memory_threshold_mb=400,
     )
 
-    if not member:
-        member = MEMBER
-
     flow_input = ETLInput(
         query_type="launchpad",
         extract_strategy="launchpad-questions-streaming",
@@ -109,7 +103,7 @@ async def run_questions_streaming_example(member: str | None = None):
         StreamingETLFlow.run,
         args=[flow_input, config],
         id=f"streaming-questions-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-        task_queue=TemporalConfig.queue,
+        task_queue=TemporalConfiguration.queue,
     )
 
     result = await handle.result()
@@ -128,9 +122,6 @@ async def run_merge_proposals_streaming_example(member: str | None = None):
         max_concurrent_chunks=2,
         memory_threshold_mb=350,
     )
-
-    if not member:
-        member = MEMBER
 
     flow_input = ETLInput(
         query_type="launchpad",
@@ -152,7 +143,7 @@ async def run_merge_proposals_streaming_example(member: str | None = None):
         StreamingETLFlow.run,
         args=[flow_input, config],
         id=f"streaming-mp-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-        task_queue=TemporalConfig.queue,
+        task_queue=TemporalConfiguration.queue,
     )
 
     result = await handle.result()
@@ -164,15 +155,16 @@ async def main():
     """Main function to run worker or example workflows."""
     import sys
 
+    MEMBER = "member_1"
     if len(sys.argv) > 2:
         MEMBER = sys.argv[2] or "member_1"
 
     if len(sys.argv) > 1 and sys.argv[1] == "bugs":
-        await run_bugs_streaming_workflow_example()
+        await run_bugs_streaming_workflow_example(MEMBER)
     elif len(sys.argv) > 1 and sys.argv[1] == "questions":
-        await run_questions_streaming_example()
+        await run_questions_streaming_example(MEMBER)
     elif len(sys.argv) > 1 and sys.argv[1] == "merge-proposals":
-        await run_merge_proposals_streaming_example()
+        await run_merge_proposals_streaming_example(MEMBER)
     else:
         print("Usage:")
         print(

@@ -1,0 +1,28 @@
+juju:
+  - secret-id: d1nta77mp25c78f322bg
+    name: DB_HOST
+    key: host
+  - secret-id: d1nta77mp25c78f322bg
+    name: DB_PORT
+    key: port
+  - secret-id: d1nta77mp25c78f322bg
+    name: DB_NAME
+    key: name
+  - secret-id: d1nta77mp25c78f322bg
+    name: DB_USER
+    key: user
+  - secret-id: d1nta77mp25c78f322bg
+    name: DB_PASSWORD
+    key: password
+  - secret-id: d1nta77mp25c78f322bg
+    name: DB_EVENTS_TABLE
+    key: events-table
+
+# env:
+  # - name: LP_TEAM_NAME
+  #   value: canonical
+    
+# vault:
+  # - path: my-secrets
+  #   name: env_var1
+  #   key: key1

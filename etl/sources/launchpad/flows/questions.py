@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime
 from typing import Any, AsyncIterator, Dict, List
 
@@ -9,10 +8,7 @@ from launchpadlib.launchpad import Launchpad
 from models.date_utils import date_in_range, dates_in_range
 from models.etl.extract_cmd import extract_method
 from sources.launchpad.query import LaunchpadQuery
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from models.logger import logger
 
 
 @extract_method(name="launchpad-questions")
@@ -35,6 +31,10 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
             "Error fetching member %s: %s", query.member, e
         )  # Handle other exceptions
 
+    if not person:
+        return []
+
+    logger.info("Connected to Launchpad member: %s", person.name)
     questions = person.searchQuestions(participation="Owner")
     if not questions:
         return []
@@ -84,6 +84,10 @@ async def extract_data_streaming(
             f"Error fetching member {query.member}: {e}"
         )  # Handle other exceptions
 
+    if not person:
+        return
+
+    logger.info("Connected to Launchpad member: %s", person.name)
     questions = person.searchQuestions(participation="Owner")
     if not questions:
         return
@@ -206,6 +210,9 @@ def extract_question_events(
             }
         )
 
+    logger.info(
+        f"Extracted {len(batch_events)} events for question {parent_item_id} ({query.member})"
+    )
     return batch_events
 
 

@@ -1,15 +1,11 @@
-import logging
-
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from config.temporal import TemporalConfig
+from config.temporal import TemporalConfiguration
+
 from models.etl.flow import ETLFlow
 from models.etl.streaming_flow import StreamingETLFlow
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from models.logger import logger
 
 
 class ETLWorker:
@@ -18,7 +14,7 @@ class ETLWorker:
     def __init__(self, client: Client) -> None:
         self._worker = Worker(
             client=client,
-            task_queue=TemporalConfig.queue,
+            task_queue=TemporalConfiguration.queue,
             workflows=[ETLFlow],
             activities=ETLFlow.get_activities(),
         )
@@ -36,7 +32,7 @@ class StreamingETLWorker:
     def __init__(self, client: Client) -> None:
         self._worker = Worker(
             client=client,
-            task_queue=TemporalConfig.queue,
+            task_queue=TemporalConfiguration.queue,
             workflows=[StreamingETLFlow],
             activities=StreamingETLFlow.get_activities(),
         )

@@ -1,14 +1,11 @@
-import logging
 from typing import Any, AsyncIterator, Dict, List
 
 from launchpadlib.launchpad import Launchpad
 
 from models.etl.extract_cmd import extract_method
-from sources.launchpad.query import LaunchpadQuery
+from models.logger import logger
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from sources.launchpad.query import LaunchpadQuery
 
 
 bug_task_status = [
@@ -51,6 +48,7 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
     if not person:
         return []
 
+    logger.info("Connected to Launchpad member: %s", person.name)
     bug_tasks = person.searchTasks(
         created_since=query.data_date_start,
         created_before=query.data_date_end,
@@ -103,6 +101,7 @@ async def extract_data_streaming(
     if not person:
         return
 
+    logger.info("Connected to Launchpad member: %s", person.name)
     bug_tasks = person.searchTasks(
         created_since=query.data_date_start,
         created_before=query.data_date_end,
@@ -197,6 +196,9 @@ def extract_bug_events(
                 }
             )
 
+    logger.info(
+        f"Extracted {len(events_batch)} events for bug {parent_item_id} ({query.member})"
+    )
     return events_batch
 
 

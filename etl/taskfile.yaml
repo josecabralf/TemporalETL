@@ -3,115 +3,108 @@
 version: "3"
 
 vars:
-  ROCK_NAME: etl-worker_0.1_amd64.rock
-  IMAGE_NAME: etl-worker-rock:latest
+  ROCK_NAME: etl-worker_1.0_amd64.rock
+  IMAGE_NAME: temporal-etl-worker:latest
   CONTAINER_NAME: etl-temporal-worker
-  APP_NAME: temporal-etl-worker
+  APP_NAME: etl-worker
   QUEUE_NAME: etl-queue
 
 tasks:
+  # List tasks
   default:
     desc: List all tasks
     cmds:
       - task: list
-
   list:
     desc: List all tasks
     silent: true
     cmds:
       - task --list-all
 
+  # Python tasks
   lint:
     desc: Run linter
     cmds:
       - ruff check --fix
-
   format:
     desc: Run formatter
     cmds:
       - ruff format
 
-  run-server:
-    desc: Start the Temporal server
-    cmds:
-      - docker compose down && docker compose up -d
-
-  run-worker:
-    desc: Run the Temporal worker
-    cmds:
-      - python -m worker
-
-  run-s-worker:
-    desc: Run the Temporal streaming worker
-    cmds:
-      - python -m worker -s
-
+  # Rock tasks
   pack:
     desc: Pack the rock
     cmds:
       - rockcraft pack -v
-
   load-image-local:
     desc: Load the .rock image into local docker registry
     cmds:
       - |
-        rockcraft.skopeo --insecure-policy copy oci-archive:{{.ROCK_NAME}} \
-          docker-daemon:{{.IMAGE_NAME}}
-
-  docker-run:
-    desc: Run the rock image (with --network set to host)
+        rockcraft.skopeo --insecure-policy copy oci-archive:{{.ROCK_NAME}} docker-daemon:{{.IMAGE_NAME}}
+  load-image-mk8s:
+    desc: Load the .rock image into microk8s registry
     cmds:
-      - docker run --rm -d --name {{.CONTAINER_NAME}} --network host {{.IMAGE_NAME}}
+      - rockcraft.skopeo --insecure-policy copy --dest-tls-verify=false oci-archive:{{.ROCK_NAME}} docker://localhost:32000/{{.IMAGE_NAME}}
 
-  docker-exec:
-    desc: Exec into the running container
-    cmds:
-      - docker exec -it {{.CONTAINER_NAME}} bash
-
+  # Docker tasks
   docker-cleanup:
     desc: Cleanup docker container and image
     cmds:
       - docker stop {{.CONTAINER_NAME}} || echo "Container not running or doesn't exist"
       - docker rmi {{.IMAGE_NAME}} || echo "Image already removed or doesn't exist"
-
-  load-image-mk8s:
-    desc: Load the .rock image into microk8s registry
+  docker-run:
+    desc: Run the rock image (with --network set to host)
     cmds:
-      - rockcraft.skopeo --insecure-policy copy --dest-tls-verify=false \
-          oci-archive:{{.ROCK_NAME}} \
-          docker://localhost:32000/{{.IMAGE_NAME}}
+      - docker run --rm -d --name {{.CONTAINER_NAME}} --network host {{.IMAGE_NAME}}
+  docker-exec:
+    desc: Exec into the running container
+    cmds:
+      - docker exec -it {{.CONTAINER_NAME}} bash
 
+  # Juju tasks
   deploy-worker-charm:
     desc: Deploy the temporal-worker-k8s charm using the rock as resource
     cmds:
-      - juju deploy temporal-worker-k8s {{.APP_NAME}} \
-          --resource temporal-worker-image=localhost:32000/{{.IMAGE_NAME}}
-
+      - |
+        juju switch temporal-workers
+        task load-image-mk8s
+        task load-image-local
+        juju deploy temporal-worker-k8s {{.APP_NAME}} --resource temporal-worker-image=localhost:32000/{{.IMAGE_NAME}}
+        juju grant-secret db {{.APP_NAME}}
+        task configure-worker-charm
+  refresh-worker-charm:
+    desc: Refresh the temporal-worker-k8s charm with the latest rock
+    cmds:
+      - |
+        task load-image-mk8s
+        task load-image-local
+        juju refresh {{.APP_NAME}} --resource temporal-worker-image=localhost:32000/{{.IMAGE_NAME}}
+        task configure-worker-charm
   configure-worker-charm:
     desc: Configure the temporal-worker-k8s charm. This is specific to the microk8s juju setup.
     cmds:
       - |
-        juju config {{.APP_NAME}} \
-          host="temporal-k8s.temporal-model:7233" \
-          queue="{{.QUEUE_NAME}}" \
-          namespace="default"
-
+        juju config {{.APP_NAME}} --file=./charm/config.yaml
+        juju config {{.APP_NAME}} environment=@./charm/environment.yaml
+  ssh-worker-charm:
+    desc: SSH into the worker charm
+    cmds:
+      - juju ssh --container temporal-worker {{.APP_NAME}}/0 bash
   follow-charm-logs:
     desc: Follow the logs of the worker charm
     cmds:
-      - microk8s kubectl -n worker-model logs {{.APP_NAME}}-0 -c temporal-worker -f
+      - microk8s kubectl -n temporal-workers logs {{.APP_NAME}}-0 -c temporal-worker -f
 
-  # start-workflow:
-  #   desc: Start a "Fake Replicate" Workflow
-  #   cmds:
-  #     - uv run python -m temporal_worker.python_scripts.start_workflow
-
-  # juju-start-workflow:
-  #   desc: Start the example Workflow using the charmed Temporal cluster and worker.
-  #   cmds:
-  #     - |
-  #       juju run temporal-admin-k8s/0 tctl args='workflow start \
-  #         --taskqueue {{.QUEUE_NAME}} \
-  #         --workflow_type FakeReplicateJobPostsWorkflow \
-  #         --execution_timeout 30 \
-  #         --input {"source_post_id":11111,"regions":["americas"],"job_id":22222,"user_email":"nathan.clairmonte@canonical.com"}'
+  # Utils
+  get-ingress-ip:
+    desc: Get the ingress IP for the worker charm
+    cmds:
+      - kubectl get pods -n ingress -o wide
+  mock-workflow:
+    desc: Start a mock Workflow
+    cmds:
+      - python run_bugs_wf.py
+  update-client:
+    desc: Reconnect to the microk8s client
+    cmds:
+      - juju update-k8s microk8s --client

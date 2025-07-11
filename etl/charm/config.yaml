@@ -1,0 +1,4 @@
+etl-worker:
+  host: "temporal-k8s.temporal-model:7233"
+  queue: "etl-queue"
+  namespace: "default"

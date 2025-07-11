@@ -3,18 +3,22 @@ import sys
 
 from temporalio.client import Client
 
-from config.temporal import TemporalConfig
+from config.temporal import TemporalConfiguration
 
 from models.etl.worker import ETLWorker, StreamingETLWorker
 
 
 async def start_worker():
-    client = await Client.connect(TemporalConfig.host)
+    client = await Client.connect(
+        TemporalConfiguration.host, namespace=TemporalConfiguration.namespace
+    )
     await ETLWorker(client).run()
 
 
 async def start_streaming_worker():
-    client = await Client.connect(TemporalConfig.host)
+    client = await Client.connect(
+        TemporalConfiguration.host, namespace=TemporalConfiguration.namespace
+    )
     await StreamingETLWorker(client).run()
 
 
