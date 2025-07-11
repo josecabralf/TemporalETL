@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, AsyncIterator, Dict, List
+from typing import Any, Dict, List
 
 import pytz
 import requests
@@ -59,7 +59,6 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
     to_date = datetime.strptime(query.data_date_end, "%Y-%m-%d").replace(
         tzinfo=pytz.UTC
     )
-    time_zone = person.time_zone
 
     events = []
     logger.info(
@@ -69,86 +68,12 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
         logger.info("Processing merge proposal: %s", merge_proposal.self_link)
         events.extend(
             extract_merge_proposal_events(
-                query, merge_proposal, time_zone, from_date, to_date
+                person, merge_proposal, from_date, to_date, lp
             )
         )
 
     return events
 
-
-@extract_method(name="launchpad-merge_proposals-streaming")
-async def extract_data_streaming(
-    query: LaunchpadQuery, chunk_size: int
-) -> AsyncIterator[List[Dict[str, Any]]]:
-    logger.info(
-        "Streaming extraction of Launchpad merge proposals data for member: %s with chunk size: %d",
-        query.member,
-        chunk_size,
-    )
-    lp = Launchpad.login_anonymously(
-        consumer_name=query.application_name,
-        service_root=query.service_root,
-        version=query.version,
-    )
-    if not lp:
-        raise ValueError("Failed to connect to Launchpad API")
-
-    try:
-        person = lp.people[query.member]  # type: ignore
-    except KeyError:
-        return  # Member does not exist, return empty iterator
-    except Exception as e:
-        raise ValueError(
-            f"Error fetching member {query.member}: {e}"
-        )  # Handle other exceptions
-
-    if not person:
-        return
-
-    logger.info("Connected to Launchpad member: %s", person.name)
-    merge_proposals = person.getMergeProposals(status=merge_proposal_status)
-    if not merge_proposals:
-        return
-
-    from_date = datetime.strptime(query.data_date_start, "%Y-%m-%d").replace(
-        tzinfo=pytz.UTC
-    )
-    to_date = datetime.strptime(query.data_date_end, "%Y-%m-%d").replace(
-        tzinfo=pytz.UTC
-    )
-    time_zone = person.time_zone
-
-    # Process merge proposals in truly streaming fashion - yield each chunk as it's processed
-    chunk_count = 0
-    logger.info(
-        "Found %d merge proposals for member %s, processing in streaming chunks of %d",
-        len(merge_proposals),
-        query.member,
-        chunk_size,
-    )
-    for i in range(0, len(merge_proposals), chunk_size):
-        batch = merge_proposals[i : i + chunk_size]
-        events_batch = []
-
-        chunk_count += 1
-        logger.info(
-            f"Processing chunk {chunk_count}: merge proposals {i + 1} to {min(i + chunk_size, len(merge_proposals))} of {len(merge_proposals)}"
-        )
-
-        for merge_proposal in batch:
-            events_batch.extend(
-                extract_merge_proposal_events(
-                    query, merge_proposal, time_zone, from_date, to_date
-                )
-            )
-
-        logger.info(f"Chunk {chunk_count} produced {len(events_batch)} events")
-        # Yield the chunk immediately instead of accumulating
-        yield events_batch
-
-
-setattr(extract_data, "is_streaming", False)
-setattr(extract_data_streaming, "is_streaming", True)
 
 """
 Helper functions to extract properties from bug, activity, and message objects
@@ -156,14 +81,16 @@ Helper functions to extract properties from bug, activity, and message objects
 
 
 def extract_merge_proposal_events(
-    query: LaunchpadQuery,
+    person,
     merge_proposal,
-    time_zone: str,
     from_date: datetime,
     to_date: datetime,
+    launchpad: Launchpad,
 ) -> List[Dict[str, Any]]:
-    events_batch = []
+    person_id = person.id
+    time_zone = person.time_zone
 
+    events_batch = []
     dates = [
         merge_proposal.date_created,
         merge_proposal.date_review_requested,
@@ -186,14 +113,30 @@ def extract_merge_proposal_events(
 
     # Create merge_proposal_created event_relation
     if date_in_range(merge_proposal.date_created, from_date, to_date):
+        employee_id = person_id
+        event_owner = (
+            merge_proposal.registrant_link.split("~")[-1]
+            if merge_proposal.registrant_link
+            else None
+        )
+        if event_owner:
+            try:
+                employee_id = launchpad.people[event_owner].id  # type: ignore
+            except KeyError:
+                logger.warning(
+                    f"Registrant {event_owner} not found in Launchpad, using person ID {person_id}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Error fetching registrant {event_owner}: {e}, using person ID {person_id}"
+                )
+
         events_batch.append(
             {
                 "parent_item_id": parent_item_id,
                 "event_id": f"{parent_item_id}-c",
                 "relation_type": "merge_proposal_created",
-                "employee_id": merge_proposal.registrant_link.split("~")[-1]
-                if merge_proposal.registrant_link
-                else query.member,
+                "employee_id": employee_id,
                 "event_time_utc": merge_proposal.date_created.isoformat(),
                 "time_zone": time_zone,
                 "relation_properties": {},
@@ -209,7 +152,7 @@ def extract_merge_proposal_events(
                 "parent_item_id": parent_item_id,
                 "event_id": f"{parent_item_id}-rq",
                 "relation_type": "merge_proposal_review_requested",
-                "employee_id": query.member,
+                "employee_id": person_id,
                 "event_time_utc": merge_proposal.date_review_requested.isoformat(),
                 "time_zone": time_zone,
                 "relation_properties": {},
@@ -220,14 +163,30 @@ def extract_merge_proposal_events(
 
     # Create reviewed event_relation
     if date_in_range(merge_proposal.date_reviewed, from_date, to_date):
+        employee_id = person_id
+        event_owner = (
+            merge_proposal.reviewer_link.split("~")[-1]
+            if merge_proposal.reviewer_link
+            else None
+        )
+        if event_owner:
+            try:
+                employee_id = launchpad.people[event_owner].id  # type: ignore
+            except KeyError:
+                logger.warning(
+                    f"Registrant {event_owner} not found in Launchpad, using person ID {person_id}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Error fetching registrant {event_owner}: {e}, using person ID {person_id}"
+                )
+
         events_batch.append(
             {
                 "parent_item_id": parent_item_id,
                 "event_id": f"{parent_item_id}-r",
                 "relation_type": "merge_proposal_reviewed",
-                "employee_id": merge_proposal.reviewer_link.split("~")[-1]
-                if merge_proposal.reviewer_link
-                else query.member,
+                "employee_id": employee_id,
                 "event_time_utc": merge_proposal.date_reviewed.isoformat(),
                 "time_zone": time_zone,
                 "relation_properties": extract_merge_proposal_reviewed_relation_props(
@@ -240,14 +199,30 @@ def extract_merge_proposal_events(
 
     # Create merged event_relation
     if date_in_range(merge_proposal.date_merged, from_date, to_date):
+        employee_id = person_id
+        event_owner = (
+            merge_proposal.merge_reporter_link.split("~")[-1]
+            if merge_proposal.merge_reporter_link
+            else None
+        )
+        if event_owner:
+            try:
+                employee_id = launchpad.people[event_owner].id  # type: ignore
+            except KeyError:
+                logger.warning(
+                    f"Registrant {event_owner} not found in Launchpad, using person ID {person_id}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Error fetching registrant {event_owner}: {e}, using person ID {person_id}"
+                )
+
         events_batch.append(
             {
                 "parent_item_id": parent_item_id,
                 "event_id": f"{parent_item_id}-m",
                 "relation_type": "merge_proposal_merged",
-                "employee_id": merge_proposal.merge_reporter_link.split("~")[-1]
-                if merge_proposal.merge_reporter_link
-                else query.member,
+                "employee_id": employee_id,
                 "event_time_utc": merge_proposal.date_merged.isoformat(),
                 "time_zone": time_zone,
                 "relation_properties": extract_merge_proposal_merged_relation_props(
@@ -268,6 +243,19 @@ def extract_merge_proposal_events(
         if not date_in_range(date_created, from_date, to_date):
             continue  # Skip comments outside the date range
 
+        employee_id = person_id
+        event_owner = comment["author_link"].split("~")[-1]
+        try:
+            employee_id = launchpad.people[event_owner].id  # type: ignore
+        except KeyError:
+            logger.warning(
+                f"Registrant {event_owner} not found in Launchpad, using person ID {person_id}"
+            )
+        except Exception as e:
+            logger.error(
+                f"Error fetching registrant {event_owner}: {e}, using person ID {person_id}"
+            )
+
         # Create comment event_relation
         events_batch.append(
             {
@@ -278,7 +266,7 @@ def extract_merge_proposal_events(
                 "relation_type": "merge_proposal_vote"
                 if comment["vote"]
                 else "merge_proposal_comment",
-                "employee_id": comment["author_link"].split("~")[-1],
+                "employee_id": employee_id,
                 "event_time_utc": date_created.isoformat(),
                 "time_zone": time_zone,
                 "relation_properties": extract_merge_proposal_comment_relation_props(
@@ -290,7 +278,7 @@ def extract_merge_proposal_events(
         )
 
     logger.info(
-        f"Extracted {len(events_batch)} events for merge proposal {parent_item_id} ({query.member})"
+        f"Extracted {len(events_batch)} events for merge proposal {parent_item_id} ({person_id})"
     )
     return events_batch
 

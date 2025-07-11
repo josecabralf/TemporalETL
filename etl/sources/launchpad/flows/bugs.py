@@ -1,4 +1,4 @@
-from typing import Any, AsyncIterator, Dict, List
+from typing import Any, Dict, List
 
 from launchpadlib.launchpad import Launchpad
 
@@ -41,9 +41,7 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
     except KeyError:
         return []  # Member does not exist, return empty list
     except Exception as e:
-        raise ValueError(
-            "Error fetching member %s: %s", query.member, e
-        )  # Handle other exceptions
+        raise ValueError("Error fetching member %s: %s", query.member, e)
 
     if not person:
         return []
@@ -54,103 +52,33 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
         created_before=query.data_date_end,
         status=bug_task_status,
     )
+    logger.info("Found %d bug tasks for member %s", len(bug_tasks), query.member)
     if not bug_tasks:
         return []
 
-    person_link = person.self_link
-    time_zone = person.time_zone
-
-    events = []
     already_seen = set()  # To avoid duplicates
-    logger.info("Found %d bug tasks for member %s", len(bug_tasks), query.member)
+    events = []
     for task in bug_tasks:
         if task.bug.id in already_seen:
             continue
-        events.extend(extract_bug_events(query, task, person_link, time_zone))
+        events.extend(extract_bug_events(person, task))
         already_seen.add(task.bug.id)
 
     return events
 
-
-@extract_method(name="launchpad-bugs-streaming")
-async def extract_data_streaming(
-    query: LaunchpadQuery, chunk_size: int
-) -> AsyncIterator[List[Dict[str, Any]]]:
-    logger.info(
-        "Streaming extraction of Launchpad bug data for member: %s with chunk size: %d",
-        query.member,
-        chunk_size,
-    )
-    lp = Launchpad.login_anonymously(
-        consumer_name=query.application_name,
-        service_root=query.service_root,
-        version=query.version,
-    )
-    if not lp:
-        raise ValueError("Failed to connect to Launchpad API")
-
-    try:
-        person = lp.people[query.member]  # type: ignore
-    except KeyError:
-        return  # Member does not exist, return empty iterator
-    except Exception as e:
-        raise ValueError(
-            f"Error fetching member {query.member}: {e}"
-        )  # Handle other exceptions
-
-    if not person:
-        return
-
-    logger.info("Connected to Launchpad member: %s", person.name)
-    bug_tasks = person.searchTasks(
-        created_since=query.data_date_start,
-        created_before=query.data_date_end,
-        status=bug_task_status,
-    )
-    if not bug_tasks:
-        return
-
-    person_link = person.self_link
-    time_zone = person.time_zone
-
-    chunk_count = 0
-    already_seen = set()  # To avoid duplicates
-    logger.info(
-        "Found %d bug tasks for member %s, processing in chunks of %d",
-        len(bug_tasks),
-        query.member,
-        chunk_size,
-    )
-    for i in range(0, len(bug_tasks), chunk_size):
-        logger.info(
-            f"Processing chunk {chunk_count}: bugs {i + 1} to {min(i + chunk_size, len(bug_tasks))} of {len(bug_tasks)}"
-        )
-        batch = bug_tasks[i : i + chunk_size]
-        events_batch: List[Dict[str, Any]] = []
-        chunk_count += 1
-
-        for task in batch:
-            if task.bug.id in already_seen:
-                continue
-            events_batch.extend(extract_bug_events(query, task, person_link, time_zone))
-            already_seen.add(task.bug.id)
-
-        logger.info(f"Chunk {chunk_count} produced {len(events_batch)} events")
-        yield events_batch
-
-
-setattr(extract_data, "is_streaming", False)
-setattr(extract_data_streaming, "is_streaming", True)
 
 """
 Helper functions to extract properties from bug, activity, and message objects
 """
 
 
-def extract_bug_events(
-    query: LaunchpadQuery, task, person_link: str, time_zone: str
-) -> List[Dict[str, Any]]:
+def extract_bug_events(person, task) -> List[Dict[str, Any]]:
     events_batch = []  # List to hold all events for this batch
+
+    # Person data (freezed)
+    person_id = person.id
+    person_link = person.self_link
+    time_zone = person.time_zone
 
     # Parent item data
     bug = task.bug
@@ -168,7 +96,7 @@ def extract_bug_events(
                     "parent_item_id": parent_item_id,
                     "event_id": f"{parent_item_id}-a{idx}",
                     "relation_type": "bug_activity",
-                    "employee_id": query.member,
+                    "employee_id": person_id,
                     "event_time_utc": activity.datechanged.isoformat(),
                     "time_zone": time_zone,
                     "relation_properties": extract_activity_relation_props(activity),
@@ -187,7 +115,7 @@ def extract_bug_events(
                     "parent_item_id": parent_item_id,
                     "event_id": f"{parent_item_id}-m{idx}",
                     "relation_type": "bug_message",
-                    "employee_id": query.member,
+                    "employee_id": person_id,
                     "event_time_utc": message.date_created.isoformat(),
                     "time_zone": time_zone,
                     "relation_properties": extract_message_relation_props(message),
@@ -197,7 +125,7 @@ def extract_bug_events(
             )
 
     logger.info(
-        f"Extracted {len(events_batch)} events for bug {parent_item_id} ({query.member})"
+        f"Extracted {len(events_batch)} events for bug {parent_item_id} ({person.id})"
     )
     return events_batch
 

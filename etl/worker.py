@@ -1,38 +1,35 @@
 import asyncio
-import sys
 
 from temporalio.client import Client
+from temporalio.worker import Worker
 
 from config.temporal import TemporalConfiguration
 
-from models.etl.worker import ETLWorker, StreamingETLWorker
+from models.etl.flow import ETLFlow
+from models.logger import logger
 
 
 async def start_worker():
     client = await Client.connect(
-        TemporalConfiguration.host, namespace=TemporalConfiguration.namespace
+        target_host=TemporalConfiguration.host,
+        namespace=TemporalConfiguration.namespace,
     )
-    await ETLWorker(client).run()
-
-
-async def start_streaming_worker():
-    client = await Client.connect(
-        TemporalConfiguration.host, namespace=TemporalConfiguration.namespace
+    worker = Worker(
+        client=client,
+        task_queue=TemporalConfiguration.queue,
+        workflows=[ETLFlow],
+        activities=ETLFlow.get_activities(),
     )
-    await StreamingETLWorker(client).run()
+
+    logger.info("Starting Temporal worker...")
+    logger.info("Listening on task queue: %s", TemporalConfiguration.queue)
+
+    await worker.run()
 
 
 if __name__ == "__main__":
-    # read args and check if streaming worker
-    streaming = len(sys.argv) > 1 and (
-        sys.argv[1] == "-s" or sys.argv[1] == "--streaming"
-    )
-
     try:
-        if streaming:
-            asyncio.run(start_streaming_worker())
-        else:
-            asyncio.run(start_worker())
+        asyncio.run(start_worker())
     except KeyboardInterrupt:
         print("Worker stopped by user.")
     except Exception as e:
