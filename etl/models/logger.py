@@ -1,6 +1,5 @@
 import logging
 
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)

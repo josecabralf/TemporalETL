@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, AsyncIterator, Dict, List
+from typing import Any, Dict, List
 
 import pytz
 import requests
@@ -45,90 +45,15 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
     to_date = datetime.strptime(query.data_date_end, "%Y-%m-%d").replace(
         tzinfo=pytz.UTC
     )
-    time_zone = person.time_zone
 
     events = []
     logger.info("Found %d questions for member %s", len(questions), query.member)
     for question in questions:
         logger.info("Processing question: %s", question.self_link)
-        events.extend(
-            extract_question_events(query, question, time_zone, from_date, to_date)
-        )
+        events.extend(extract_question_events(person, question, from_date, to_date, lp))
 
     return events
 
-
-@extract_method(name="launchpad-questions-streaming")
-async def extract_data_streaming(
-    query: LaunchpadQuery, chunk_size: int
-) -> AsyncIterator[List[Dict[str, Any]]]:
-    logger.info(
-        "Streaming extraction of Launchpad question data for member: %s with chunk size: %d",
-        query.member,
-        chunk_size,
-    )
-    lp = Launchpad.login_anonymously(
-        consumer_name=query.application_name,
-        service_root=query.service_root,
-        version=query.version,
-    )
-    if not lp:
-        raise ValueError("Failed to connect to Launchpad API")
-
-    try:
-        person = lp.people[query.member]  # type: ignore
-    except KeyError:
-        return  # Member does not exist, return empty iterator
-    except Exception as e:
-        raise ValueError(
-            f"Error fetching member {query.member}: {e}"
-        )  # Handle other exceptions
-
-    if not person:
-        return
-
-    logger.info("Connected to Launchpad member: %s", person.name)
-    questions = person.searchQuestions(participation="Owner")
-    if not questions:
-        return
-
-    from_date = datetime.strptime(query.data_date_start, "%Y-%m-%d").replace(
-        tzinfo=pytz.UTC
-    )
-    to_date = datetime.strptime(query.data_date_end, "%Y-%m-%d").replace(
-        tzinfo=pytz.UTC
-    )
-    time_zone = person.time_zone
-
-    # Process questions in truly streaming fashion - yield each chunk as it's processed
-    chunk_count = 0
-    logger.info(
-        "Found %d questions for member %s, processing in streaming chunks of %d",
-        len(questions),
-        query.member,
-        chunk_size,
-    )
-    for i in range(0, len(questions), chunk_size):
-        batch = questions[i : i + chunk_size]
-        events_batch = []
-
-        chunk_count += 1
-        logger.info(
-            f"Processing chunk {chunk_count}: questions {i + 1} to {min(i + chunk_size, len(questions))} of {len(questions)}"
-        )
-
-        for question in batch:
-            events_batch.extend(
-                extract_question_events(query, question, time_zone, from_date, to_date)
-            )
-
-        logger.info(f"Chunk {chunk_count} produced {len(events_batch)} events")
-        # Yield the chunk immediately instead of accumulating
-        yield events_batch
-
-
-setattr(extract_data, "is_streaming", False)
-setattr(extract_data_streaming, "is_streaming", True)
 
 """
 Helper functions to extract properties from bug, activity, and message objects
@@ -136,12 +61,15 @@ Helper functions to extract properties from bug, activity, and message objects
 
 
 def extract_question_events(
-    query: LaunchpadQuery,
+    person,
     question,
-    time_zone: str,
     from_date: datetime,
     to_date: datetime,
+    launchpad: Launchpad,
 ) -> List[Dict[str, Any]]:
+    person_id = person.id
+    time_zone = person.time_zone
+
     batch_events = []
     dates = [
         question.date_created,
@@ -169,7 +97,7 @@ def extract_question_events(
                 "parent_item_id": parent_item_id,
                 "event_id": f"{parent_item_id}-c",
                 "relation_type": "question_created",
-                "employee_id": query.member,
+                "employee_id": person.id,
                 "event_time_utc": question.date_created.isoformat(),
                 "time_zone": time_zone,
                 "relation_properties": {},
@@ -193,6 +121,19 @@ def extract_question_events(
         if not date_in_range(answer_date, from_date, to_date):
             continue
 
+        employee_id = person_id
+        event_owner = answer["owner_link"].split("~")[-1]
+        try:
+            employee_id = launchpad.people[event_owner].id  # type: ignore
+        except KeyError:
+            logger.warning(
+                f"Registrant {event_owner} not found in Launchpad, using person ID {person_id}"
+            )
+        except Exception as e:
+            logger.error(
+                f"Error fetching registrant {event_owner}: {e}, using person ID {person_id}"
+            )
+
         is_solved = answer.get("new_status") == "Solved"
         batch_events.append(
             {
@@ -201,7 +142,7 @@ def extract_question_events(
                 "relation_type": "question_solved"
                 if is_solved
                 else "question_answered",
-                "employee_id": answer["owner_link"].split("~")[-1],
+                "employee_id": employee_id,
                 "event_time_utc": answer_date.isoformat(),
                 "time_zone": time_zone,
                 "relation_properties": extract_answer_relation_props(answer),
@@ -211,7 +152,7 @@ def extract_question_events(
         )
 
     logger.info(
-        f"Extracted {len(batch_events)} events for question {parent_item_id} ({query.member})"
+        f"Extracted {len(batch_events)} events for question {parent_item_id} ({person.id})"
     )
     return batch_events
 
