@@ -196,6 +196,7 @@ cython_debug/
 
 # Launchpadlib
 *.ipynb
+.credentials
 devel/
 
 # Charming
