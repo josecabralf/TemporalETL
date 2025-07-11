@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -7,14 +6,12 @@ from typing import Any, Dict, List, Optional, Tuple
 from temporalio import activity, workflow
 
 from db.db import Database
+
 from models.etl.extract_cmd import ExtractStrategy
 from models.etl.input import ETLInput
 from models.etl.query import QueryFactory
 from models.event import Event
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from models.logger import logger
 
 
 @dataclass
@@ -78,6 +75,7 @@ class StreamingETLFlow:
             input,
             start_to_close_timeout=timedelta(minutes=2),
         )
+        logger.info(f"ETL flow {workflow.info().workflow_id} metadata: {metadata}")
         summary.update(metadata)
 
         # Track processing state

@@ -21,7 +21,8 @@ import uuid
 from launchpadlib.launchpad import Launchpad
 from temporalio.client import Client
 
-from models.etl.flow import ETLFlow
+from config.temporal import TemporalConfiguration
+
 from models.etl.input import ETLInput
 
 # Configure logging
@@ -81,10 +82,10 @@ async def queue_workflows():
 
             # Start the workflow without waiting for it to complete
             await client.start_workflow(
-                ETLFlow.run,  # Assuming ETLFlow.run is your workflow method
+                "ETLFlow",
                 input,
                 id=workflow_id,
-                task_queue="etl-task-queue",  # Replace with your actual task queue name
+                task_queue=TemporalConfiguration.queue,  # Replace with your actual task queue name
             )
 
             member_workflows.append(workflow_id)
@@ -104,7 +105,7 @@ if __name__ == "__main__":
     FROM_DATE = os.getenv("FROM_DATE", "2023-01-01")
     TO_DATE = os.getenv("TO_DATE", "2023-03-31")
 
-    TEMPORAL_HOST = os.getenv("TEMPORAL_HOST", "localhost:7233")
+    TEMPORAL_HOST = TemporalConfiguration.host
 
     import asyncio
 

@@ -1,14 +1,10 @@
-import logging
 import os
 from dataclasses import dataclass
 from importlib import import_module
 from typing import Any, Dict, Type
 
 from models.file_utils import find_project_root
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from models.logger import logger
 
 
 @dataclass
@@ -127,6 +123,9 @@ class QueryFactory:
             except Exception as e:
                 logger.error("Error importing query module %s: %s", query_module, e)
 
+        logger.info(
+            f"Successfully imported {len(_query_type_registry.keys())} query modules"
+        )
         QueryFactory._modules_imported = True
 
     @staticmethod

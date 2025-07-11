@@ -1,4 +1,3 @@
-import logging
 import threading
 from contextlib import contextmanager
 from typing import List
@@ -13,8 +12,7 @@ from db.sql import (
 )
 from config.database import DatabaseConfiguration
 from models.event import Event
-
-logger = logging.getLogger(__name__)
+from models.logger import logger
 
 
 class Database:
@@ -27,6 +25,7 @@ class Database:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
+                    logger.info("New Database instance")
                     cls._instance = super(Database, cls).__new__(cls)
                     cls._instance._initialized = False
         return cls._instance

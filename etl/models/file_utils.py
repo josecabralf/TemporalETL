@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 @lru_cache(maxsize=1)
-def find_project_root(marker_files=("requirements.txt",)) -> Path:
+def find_project_root(marker_files=("worker.py",)) -> Path:
     """Find project root by looking for marker files."""
     current = Path(__file__).resolve()
     for parent in current.parents:

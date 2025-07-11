@@ -6,17 +6,12 @@ class DatabaseConfiguration:
 
     def __init__(self):
         self._password = os.getenv("DB_PASSWORD")
-        if not self._password:
-            raise ValueError(
-                "DB_PASSWORD environment variable is required for PostgreSQL connection"
-            )
+        self._host = os.getenv("DB_HOST")
+        self._port = os.getenv("DB_PORT")
+        self._name = os.getenv("DB_NAME")
+        self._user = os.getenv("DB_USER")
 
-        self._host = os.getenv("DB_HOST", "localhost")
-        self._port = os.getenv("DB_PORT", "5432")
-        self._name = os.getenv("DB_NAME", "launchpad_events")
-        self._user = os.getenv("DB_USER", "postgres")
-
-        self.events_table = os.getenv("DB_EVENTS_TABLE", "launchpad_events")
+        self.events_table = os.getenv("DB_EVENTS_TABLE", "events")
 
     @property
     def connection_string(self) -> str:

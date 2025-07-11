@@ -1,14 +1,10 @@
-import logging
 import os
 import pkgutil
 from importlib import import_module
 from typing import Callable, Dict
 
 from models.file_utils import find_project_root
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from models.logger import logger
 
 
 # Global registry for extract methods
@@ -99,6 +95,9 @@ class ExtractStrategy:
             except Exception as e:
                 logger.error("Error scanning flow directory %s: %s", flow_path, e)
 
+        logger.info(
+            f"Successfully imported {len(_extract_method_registry.keys())} flow modules"
+        )
         ExtractStrategy._modules_imported = True
 
     @staticmethod

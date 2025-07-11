@@ -1,18 +1,16 @@
-import logging
 from datetime import datetime
 from typing import Any, AsyncIterator, Dict, List
 
 import pytz
 import requests
+
 from launchpadlib.launchpad import Launchpad
 
 from models.date_utils import date_in_range, dates_in_range
 from models.etl.extract_cmd import extract_method
-from sources.launchpad.query import LaunchpadQuery
+from models.logger import logger
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from sources.launchpad.query import LaunchpadQuery
 
 
 merge_proposal_status = [
@@ -47,6 +45,10 @@ async def extract_data(query: LaunchpadQuery) -> List[Dict[str, Any]]:
             "Error fetching member %s: %s", query.member, e
         )  # Handle other exceptions
 
+    if not person:
+        return []
+
+    logger.info("Connected to Launchpad member: %s", person.name)
     merge_proposals = person.getMergeProposals(status=merge_proposal_status)
     if not merge_proposals:
         return []
@@ -100,7 +102,10 @@ async def extract_data_streaming(
             f"Error fetching member {query.member}: {e}"
         )  # Handle other exceptions
 
-    # Fetch merge proposals based on date range and status
+    if not person:
+        return
+
+    logger.info("Connected to Launchpad member: %s", person.name)
     merge_proposals = person.getMergeProposals(status=merge_proposal_status)
     if not merge_proposals:
         return
@@ -284,6 +289,9 @@ def extract_merge_proposal_events(
             }
         )
 
+    logger.info(
+        f"Extracted {len(events_batch)} events for merge proposal {parent_item_id} ({query.member})"
+    )
     return events_batch
 
 

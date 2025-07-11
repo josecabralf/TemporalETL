@@ -1,7 +1,7 @@
 import os
 
 
-class TemporalConfig:
+class TemporalConfiguration:
     """Configuration class for the Temporal worker."""
 
     queue = os.getenv("TEMPORAL_QUEUE", "etl-queue")
