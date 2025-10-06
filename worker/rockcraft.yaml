@@ -1,0 +1,46 @@
+name: etl-worker
+summary:  ETL temporal worker app
+description: |
+  OCI image for ETL temporal worker app
+  The ETL worker is responsible for processing data from the ETL queue and performing necessary transformations.
+  It takes data from any or the registered sources, processes it, and stores it in the database.
+version: "1.0.0"
+base: ubuntu@24.04
+platforms:
+  amd64:
+
+services:
+  worker:
+    override: replace
+    startup: disabled
+    command: "./app/scripts/start-worker.sh"
+
+parts:
+  worker-deps:
+    plugin: python
+    source: .
+    python-requirements:
+      - requirements.txt
+    stage-packages:
+      - python3
+      - python3-venv
+
+  worker-app:
+    plugin: dump
+    source: .
+    source-type: local
+    overlay-packages:
+      - bash
+      - coreutils
+      - curl
+    override-pull: |
+      craftctl default
+      chmod +x scripts/start-worker.sh
+    organize:
+      external: app/external/
+      models: app/models/
+      scripts: app/scripts
+      sources: app/sources/
+      worker.py: app/worker.py
+    prime:
+      - app
